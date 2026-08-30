@@ -274,9 +274,6 @@ class DroneDynamics:
         state_next_min = jnp.min(Ax, axis=0) + jnp.min(Bu, axis=0)
         state_next_max = jnp.max(Ax, axis=0) + jnp.max(Bu, axis=0)
 
-        state_next_min = state_next_min.at[1::2].set(jnp.clip(state_next_min[1::2], self.v_min + 1e-4, self.v_max - 1e-4))
-        state_next_max = state_next_max.at[1::2].set(jnp.clip(state_next_max[1::2], self.v_min + 1e-4, self.v_max - 1e-4))
-
         return state_next_min, state_next_max
 
 class PendulumDynamics:

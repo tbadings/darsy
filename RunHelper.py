@@ -24,91 +24,17 @@ def run(abstraction: str, args: list[str]) -> None:
     cmd = [sys.executable, str(runfile), *args]
     subprocess.run(cmd, check=True, cwd=root)
 
-def config_MountainCar() -> list[str]:
-    return [
-        "--model",
-        "MountainCar",
-        # "--batch_size",
-        # "1000",
-        "--solver",
-        "jax",
-    ]
-
-def config_CartPole() -> list[str]:
-    return [
-        "--model",
-        "CartPole",
-        "--satprob",
-        "0.99",
-        # "--batch_size",
-        # "1000",
-        "--solver",
-        "jax",
-    ]
-
-def config_Dubins3D() -> list[str]:
-    return [
-        "--model",
-        "Dubins3D",
-        # "--batch_size",
-        # "1000",
-        "--solver",
-        "jax",
-    ]
-
-def config_Dubins4D() -> list[str]:
-    return [
-        "--model",
-        "Dubins4D",
-        # "--batch_size",
-        # "1000",
-        "--solver",
-        "jax",
-    ]
-
-def config_Drone4D() -> list[str]:
-    return [
-        "--model",
-        "Drone4D",
-        # "--batch_size",
-        # "1000",
-        # "--noise_distr",
-        # "normal",
-        "--solver",
-        "jax",
-    ]
-
-def config_Drone6D_small() -> list[str]:
-    return [
-        "--model",
-        "Drone6D_small",
-        "--satprob",
-        "0.95",
-        # "--batch_size",
-        # "1000",
-        "--solver",
-        "jax",
-    ]
-
-def config_Drone6D() -> list[str]:
-    return [
-        "--model",
-        "Drone6D",
-        # "--batch_size",
-        # "1000",
-        "--solver",
-        "jax",
-    ]
-
-# To run a particular benchmark, change the abstraction and the config in the calls below.
+# To run a particular benchmark, change the abstraction and uncomment one of the calls below.
 if __name__ == "__main__":
     # Which abstraction to build: "IMDP" or "SVMDP".
-    ABSTRACTION = "IMDP"
+    ABSTRACTION = "SVMDP"
 
-    run(ABSTRACTION, config_MountainCar())
-    # run(ABSTRACTION, config_CartPole())
-    # run(ABSTRACTION, config_Dubins3D())
-    # run(ABSTRACTION, config_Dubins4D())
-    # run(ABSTRACTION, config_Drone4D())
-    # run(ABSTRACTION, config_Drone6D_small())
-    # run(ABSTRACTION, config_Drone6D())
+    # Optional extra arguments: "--batch_size", "1000" / "--noise_distr", "normal".
+
+    run(ABSTRACTION, ["--model", "MountainCar", "--solver", "jax"])
+    # run(ABSTRACTION, ["--model", "CartPole", "--satprob", "0.99", "--solver", "jax"])
+    # run(ABSTRACTION, ["--model", "Dubins3D", "--solver", "jax"])
+    # run(ABSTRACTION, ["--model", "Dubins4D", "--solver", "jax"])
+    # run(ABSTRACTION, ["--model", "Drone4D", "--solver", "jax"])
+    # run(ABSTRACTION, ["--model", "Drone6D_small", "--satprob", "0.95", "--solver", "jax"])
+    # run(ABSTRACTION, ["--model", "Drone6D", "--solver", "jax"])
