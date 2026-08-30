@@ -246,7 +246,7 @@ class DroneDynamics:
             elif args.noise_distr == 'triangular':
                 cov = np.array([0.1, 0, 0.1, 0, 0.1, 0]) # Halfwidth
                 self.noise = TriangularDistr(cov)
-                self.noise.set_partition_probs(num_cells=[10, 1, 10, 1, 10, 1])
+                self.noise.set_partition_probs(num_cells=[5, 1, 5, 1, 5, 1])
             else:
                 raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 

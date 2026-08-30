@@ -31,10 +31,25 @@ if __name__ == "__main__":
 
     # Optional extra arguments: "--batch_size", "1000" / "--noise_distr", "normal".
 
-    run(ABSTRACTION, ["--model", "MountainCar", "--solver", "jax"])
-    # run(ABSTRACTION, ["--model", "CartPole", "--satprob", "0.99", "--solver", "jax"])
-    # run(ABSTRACTION, ["--model", "Dubins3D", "--solver", "jax"])
-    # run(ABSTRACTION, ["--model", "Dubins4D", "--solver", "jax"])
-    # run(ABSTRACTION, ["--model", "Drone4D", "--solver", "jax"])
-    # run(ABSTRACTION, ["--model", "Drone6D_small", "--satprob", "0.95", "--solver", "jax"])
-    # run(ABSTRACTION, ["--model", "Drone6D", "--solver", "jax"])
+    # run("IMDP", ["--model", "MountainCar", "--solver", "jax"])
+    # run("SVMDP", ["--model", "MountainCar", "--solver", "jax"])
+
+    # run("IMDP", ["--model", "Pendulum", "--solver", "jax"])
+    # run("SVMDP", ["--model", "Pendulum", "--solver", "jax"])
+
+    # run("IMDP", ["--model", "Dubins3D", "--solver", "jax"])
+    # run("SVMDP", ["--model", "Dubins3D", "--solver", "jax"])
+
+    # run("IMDP", ["--model", "Dubins4D", "--solver", "jax"])
+    # run("SVMDP", ["--model", "Dubins4D", "--solver", "jax"])
+
+    # run("IMDP", ["--model", "Drone4D", "--solver", "jax"])
+    # run("SVMDP", ["--model", "Drone4D", "--solver", "jax"])
+
+    # Still too big to run:
+    # run("IMDP", ["--model", "Drone6D_small", "--satprob", "0.95", "--solver", "jax"])
+    # run("SVMDP", ["--model", "Drone6D_small", "--satprob", "0.95", "--solver", "jax"])
+    # run("IMDP", ["--model", "Drone6D", "--solver", "jax"])
+    # run("SVMDP", ["--model", "Drone6D", "--solver", "jax"])
+    # run("IMDP", ["--model", "CartPole", "--satprob", "0.99", "--solver", "jax"])
+    # run("SVMDP", ["--model", "CartPole", "--satprob", "0.99", "--solver", "jax"])

@@ -59,9 +59,7 @@ def parse_arguments(argv=None):
                         help="If true, run policy iteration. Otherwise, run value iteration")
     parser.add_argument('--solver', type=str, default='jax', choices=['jax', 'storm'],
                         help="Solver backend to use for robust dynamic programming")
-
-    parser.add_argument('--mode', type=str, default='fori_loop',
-                        help="Should be one of 'fori_loop', 'vmap', 'python'")
+    
     parser.add_argument('--batch_size', type=_positive_int, default=100,
                         help="For computing the transition probability intervals, the number of states to process in a vectorized fashion (Warning: increasing this too much drastically increases memory usage for JIT compilation by JAX!)")
     parser.add_argument('--frs_batch_size', type=_positive_int, default=1000,
@@ -78,6 +76,7 @@ def parse_arguments(argv=None):
                              'model, partition, and IMDP are loaded from the checkpoint.')
     parser.add_argument('--save_checkpoint', action=argparse.BooleanOptionalAction, default=False,
                         help="If True, save checkpoints during execution")
+
     # Plotting options
     parser.add_argument('--plot_grid', action=argparse.BooleanOptionalAction, default=False,
                         help="If True, plot unit grids in figures")

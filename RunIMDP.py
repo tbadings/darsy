@@ -177,6 +177,10 @@ if __name__ == '__main__':
         args, stamp, idx_show=model.plot_dimensions,
         partition=partition, results=V, filename='heatmap_satprob',
     )
+    heatmap(
+        args, stamp, idx_show=model.plot_dimensions,
+        partition=partition, results=policy_inputs[:, 0], filename='policy',
+    )
     plot_traces(
         args, stamp, model.plot_dimensions, partition, model,
         sim.results['traces'], line=False, num_traces=10, add_unsafe_box=False,
@@ -209,3 +213,6 @@ if __name__ == '__main__':
             np.array(sim.results['traces'][0]['x'])[:, [0, 2]],
             filename=str(args.output_dir / f'cartpole_{stamp}.gif'),
         )
+
+    logger.info('\n=== Run finished. Output directory: %s ===', run_output_dir)
+    logger.info('====================\n')
