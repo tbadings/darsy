@@ -5,14 +5,12 @@ sphinx==8.2.3
 sphinx-rtd-theme==3.0.2
 sphinx_mdinclude==0.6.2
 myst-parser==4.0.1
-imageio==2.9.0
 matplotlib==3.11.1
+pillow==12.3.0
 numpy==2.5.2
 scipy==1.18.1
 seaborn==0.13.2
-visvis==1.15.0
-xlrd==2.0.1
-xlsxwriter==3.2.2
+stormpy==1.14.0
+pandas==2.3.3
 tqdm==4.67.1
 jaxtyping==0.3.7
-jax==0.11.1

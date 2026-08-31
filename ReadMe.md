@@ -1,11 +1,6 @@
 # IMDP Synthesis
 
-This repository implements abstraction-based methods for robust policy synthesis in discrete-time stochastic dynamical systems, based on interval Markov decision process (IDMP) abstractions.
-
-In particular, the codebase implements and builds on methods from the following papers:
-
-- Thom Badings and Alessandro Abate. "Probabilistic Alternating Simulations for Policy Synthesis in Uncertain Stochastic Dynamical Systems." In 2025 IEEE 64th Conference on Decision and Control (CDC), pages 3919-3924. IEEE, 2025.
-- Thom Badings, Licio Romao, Alessandro Abate, David Parker, Hasan A. Poonawala, Marielle Stoelinga, and Nils Jansen. "Robust Control for Dynamical Systems with Non-Gaussian Noise via Formal Abstractions." Journal of Artificial Intelligence Research, 76:341-391, 2023.
+This repository implements abstraction-based methods for robust policy synthesis in discrete-time stochastic dynamical systems, based on interval Markov decision process (IDMP) abstractions and set-valued Markov decision process (SVMDP) abstractions.
 
 # Installation
 
@@ -13,13 +8,11 @@ Follow the steps below to install the tool:
 
 ## 1. Python environment
 
-The project is currently documented and tested with Python 3.13.
-
-We recommend creating a dedicated environment with conda or mamba:
+The project is currently documented and tested with Python 3.13. We recommend creating a dedicated environment:
 
 ```bash
-conda create -n dynabs-jax python=3.13
-conda activate dynabs-jax
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
 Next, install the base Python dependencies:
@@ -41,29 +34,23 @@ pip install jax
 For CUDA-enabled execution via conda:
 
 ```bash
-conda install jaxlib=*=*cuda* jax cuda-nvcc -c conda-forge -c nvidia
+pip install "jax[cuda13]"
 ```
 
-Apple Silicon note: in practice, CPU JAX has generally been more reliable here than JAX Metal.
-
-## 3. Storm backend (optional)
-
-The `storm` solver backend requires the Storm model checker together with the Python bindings `stormpy`. If `stormpy` is not installed, the JAX backend remains fully available.
-
-For installation instructions, see:
-
-- Storm build documentation: https://www.stormchecker.org/documentation/obtain-storm/build.html
-- Stormpy installation guide: https://stormchecker.github.io/stormpy/installation.html
+Apple Silicon should use the CPU version of JAX.
 
 # Project entrypoints
 
-The main script is:
+There is one entrypoint per abstraction:
 
 ```bash
-python RunIMDP.py --model <model_name>
+python RunIMDP.py --model <model_name>     # IMDP abstraction
+python RunSVMDP.py --model <model_name>    # SVMDP abstraction
 ```
 
-The repository also includes a convenience launcher, `Run_fixed.py`, for replaying a fixed configuration during local experimentation. It runs one benchmark config through either `RunIMDP.py` or `RunSVMDP.py`, selected by the `ABSTRACTION` variable at the bottom of the file. It is not intended as the primary public entrypoint and uses hardcoded parameters.
+Both share the run pipeline in `core/pipeline.py` and accept the same options; they differ only in the abstraction they build and the solver they call. `--solver storm` applies to `RunIMDP.py` only.
+
+`RunHelper.py` is a convenience launcher for local experimentation: uncomment one of its `run(...)` lines to replay a fixed configuration through either entrypoint.
 
 # Available benchmarks
 
@@ -72,19 +59,23 @@ The current benchmark registry includes:
 - `Dubins3D`: 3D Dubins vehicle with 2D control input.
 - `Dubins4D`: 4D Dubins vehicle with 2D control input.
 - `Drone4D`: 4D quadrotor model.
-- `Drone6D`: 6D quadrotor model.
-- `Drone6D_small`: reduced 6D quadrotor configuration for faster debugging.
 - `Pendulum`: inverted pendulum benchmark.
 - `MountainCar`: mountain car benchmark.
 - `DoubleIntegrator`: double integrator benchmark.
 - `Test1D`: simple 1D test model.
 
+Included but untested benchmarks are:
+
+- `Drone6D`: 6D quadrotor model.
+- `Drone6D_small`: reduced 6D quadrotor configuration for faster debugging.
+- `CartPole`: cart-pole benchmark.
+
 Example runs:
 
 ```bash
-python RunIMDP.py --model Dubins3D
-python RunIMDP.py --model Drone4D
-python RunIMDP.py --model MountainCar
+python RunIMDP.py --model Dubins3D --solver jax
+python RunIMDP.py --model Drone4D --solver storm
+python RunSVMDP.py --model MountainCar
 ```
 
 # Running a benchmark
@@ -103,10 +94,7 @@ This will:
 4. run Monte Carlo validation,
 5. save logs, plots, and a `checkpoint.pkl` file (the last only with `--save_checkpoint`).
 
-Steps 4 and 5 are best effort. Policy synthesis is the expensive part of a run, so a failure while
-simulating or plotting is logged as an error (with its traceback in `run_<timestamp>.log`) and the
-remaining steps still run, rather than discarding the run. A closing `N post-processing step(s)
-failed: ...` line lists anything that did not produce output.
+Steps 4 and 5 are best effort: a failure while simulating or plotting is logged (with its traceback in `run_<timestamp>.log`) and the remaining steps still run, so a plotting bug cannot discard a finished synthesis. A closing `N post-processing step(s) failed: ...` line lists whatever did not produce output.
 
 ## Reusing a checkpoint
 
@@ -116,7 +104,7 @@ To skip abstraction generation and rerun the solver and plotting pipeline from a
 python RunIMDP.py --model MountainCar --load_checkpoint output/<timestamp>_MountainCar/checkpoint.pkl
 ```
 
-When `--load_checkpoint` is provided, the saved model, partition, and IMDP are loaded directly from the specified pickle file.
+When `--load_checkpoint` is provided, the saved model, partition, and abstraction are loaded directly from the specified pickle file. Checkpoints are specific to the entrypoint that wrote them.
 
 # Solver backends
 
@@ -141,6 +129,8 @@ Note: the Storm backend currently supports robust value iteration, not robust po
 - `--model`: benchmark name.
 - `--solver {jax,storm}`: select the backend.
 - `--noise_distr {gaussian,normal,triangular}`: select the noise model. `normal` is accepted as an alias of `gaussian`.
+- `--policy_iteration` or `--no-policy_iteration`: robust policy iteration (default) or value iteration.
+- `--satprob`: stop improving the policy once the value in the initial state reaches this bound, and only evaluate it to convergence. Policy iteration only.
 
 ## Performance and memory tuning
 
@@ -177,42 +167,14 @@ Depending on the benchmark and selected options, that directory may contain:
 - `run_<timestamp>.log`: full log output.
 - `satprob_<timestamp>.{pdf,png}`: heatmap of the satisfaction probability per state.
 - `policy_<timestamp>.{pdf,png}`: heatmap of the first control input selected per state.
-- `traces_<timestamp>.{pdf,png}`: simulated trajectories, projected onto the model's
-  `plot_dimensions` (models with a single plot dimension are drawn against the time step instead).
-- `traces_3d_<timestamp>_view<i>.{pdf,png}`: 3D trajectories, for models that define
-  `plot_dimensions_3d` (such as `Drone6D`).
-- benchmark-specific GIFs for models that define `gif_dimensions` and a `plot_trajectory_gif`
-  method, such as `Pendulum`, `MountainCar`, and `CartPole`.
-
-# Running tests
-
-The repository includes a small regression test suite under `tests/`.
-
-Run all tests with:
-
-```bash
-python tests/run_tests.py
-```
-
-List available test modules:
-
-```bash
-python tests/run_tests.py --list
-```
-
-Run specific tests:
-
-```bash
-python tests/run_tests.py test_options
-python tests/run_tests.py test_benchmarks test_test1d_probability_intervals
-```
+- `traces_<timestamp>.{pdf,png}`: simulated trajectories over the model's `plot_dimensions` (1D models are drawn against the time step).
+- `traces_3d_<timestamp>_view<i>.{pdf,png}`: 3D trajectories, for models defining `plot_dimensions_3d` (such as `Drone6D`).
+- a trajectory GIF, for models defining `gif_dimensions` (`Pendulum`, `MountainCar`, `CartPole`).
 
 # Repository structure
 
 - `benchmarks/`: benchmark model definitions.
-- `core/pipeline.py`: the run pipeline shared by `RunIMDP.py` and `RunSVMDP.py` (run setup,
-  checkpointing, policy extraction, validation, and plotting).
-- `core/abstraction/`: partitioning, IMDP construction, and solver implementations.
+- `core/pipeline.py`: run pipeline shared by both entrypoints (setup, checkpointing, policy extraction, validation, plotting).
+- `core/abstraction/`: partitioning, IMDP and SVMDP construction, and solver implementations.
 - `core/plotting/`: heatmaps and trajectory visualization.
 - `core/validate/`: Monte Carlo simulation and validation utilities.
-- `tests/`: regression tests.
