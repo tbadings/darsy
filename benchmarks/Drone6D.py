@@ -1,10 +1,6 @@
-from functools import partial
 from benchmarks.models import DroneDynamics
-import jax
 import jax.numpy as jnp
 import numpy as np
-import scipy 
-from benchmarks.dynamics import setmath
 
 
 class Drone6D(DroneDynamics):

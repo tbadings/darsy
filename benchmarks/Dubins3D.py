@@ -1,11 +1,8 @@
-from functools import partial
 
 from benchmarks.models import DubinsDynamics3D
-import jax
 import jax.numpy as jnp
 import numpy as np
 
-from benchmarks.dynamics import setmath
 
 
 def wrap_theta(theta):

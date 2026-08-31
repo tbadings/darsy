@@ -1,9 +1,6 @@
-from functools import partial
 from benchmarks.models import CartPoleDynamics
-import jax
 import jax.numpy as jnp
 import numpy as np
-from benchmarks.dynamics import setmath
 from matplotlib import animation
 
 

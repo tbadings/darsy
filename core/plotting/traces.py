@@ -10,7 +10,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from pathlib import Path
 from scipy.interpolate import CubicSpline
 
-from core.utils import cm2inch, remove_consecutive_duplicates
+from core.utils import cm2inch
 from core.plotting.utils import plot_boxes, plot_grid, set_plot_lims, set_plot_ticks
 
 mpl.rcParams['pdf.fonttype'] = 42
@@ -97,8 +97,6 @@ def plot_traces_3d(args, stamp, idx_show, partition, model, traces, num_traces=1
     widths = np.array(partition.cell_width)[[i1, i2, i3]]
     lowers = np.array(partition.boundary_lb)[[i1, i2, i3]]
     uppers = np.array(partition.boundary_ub)[[i1, i2, i3]]
-    counts = np.array(partition.number_per_dim)[[i1, i2, i3]]
-
     tick_sets = []
     for lower, upper, width in zip(lowers, uppers, widths):
         ticks = np.arange(lower, upper + width, width)
@@ -323,8 +321,6 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
         if i > num_traces:
             break
 
-        # state_trace = remove_consecutive_duplicates(state_trace)
-
         # Plot precise points
         plt.plot(*state_trace.T, 'o', markersize=1, color="black");
 
@@ -336,11 +332,6 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
 
             # Interpolation for different methods:
             alpha = np.linspace(0, 1, 75)
-
-            if len(state_trace) == 2:
-                kind = 'linear'
-            else:
-                kind = 'quadratic'
 
             cs = CubicSpline(distance, state_trace, bc_type='natural')
             interpolated_points = cs(alpha)

@@ -292,7 +292,7 @@ def SVMDP_DP(
             postfix_dict = {}
             if s0 is not None:
                 postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
-                postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
+                postfix_dict['v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
             pbar.set_postfix(postfix_dict)
             
             V_old = V.copy()
@@ -312,6 +312,7 @@ def SVMDP_DP(
     else:
         partial_convergence_reached = False
         sat_policy = False
+        sat_policy_logged = False
         delta = float('inf')
 
         # Persistent caches for the incremental policy-evaluation gather (Opt 1, see prepare block below).
@@ -361,16 +362,19 @@ def SVMDP_DP(
 
                 postfix_dict = {}
                 if s0 is not None:
-                    postfix_dict[f'eval_it'] = i
+                    postfix_dict['eval_it'] = i
                     postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
-                    postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
-                    postfix_dict[f'max(v-v_old)'] = f'{delta:.6f}'
+                    postfix_dict['v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
+                    postfix_dict['max(v-v_old)'] = f'{delta:.6f}'
 
                     # Check if policy is above the preset threshold quality
                     if V[s0] >= args.satprob:
-                        logger.info(f'Policy is above the satisfaction threshold {args.satprob:.2f} after {iteration + 1} iterations')
                         # Policy is already good enough, so skip policy improvement and only keep evaluating it until convergence
                         sat_policy = True
+                        if not sat_policy_logged:
+                            logger.info('Policy is above the satisfaction threshold %.2f after %d iterations',
+                                        args.satprob, iteration + 1)
+                            sat_policy_logged = True
                     else:
                         sat_policy = False
                 pbar.set_postfix(postfix_dict)

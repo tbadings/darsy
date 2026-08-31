@@ -1,9 +1,6 @@
-from functools import partial
 from benchmarks.models import Test1DDynamics
-import jax
 import jax.numpy as jnp
 import numpy as np
-from benchmarks.dynamics import setmath
 
 
 class Test1D(Test1DDynamics):

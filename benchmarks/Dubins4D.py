@@ -1,9 +1,6 @@
-from functools import partial
 from benchmarks.models import DubinsDynamics4D
-import jax
 import jax.numpy as jnp
 import numpy as np
-from benchmarks.dynamics import setmath
 
 
 class Dubins4D(DubinsDynamics4D):

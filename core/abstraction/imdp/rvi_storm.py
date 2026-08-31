@@ -1,7 +1,7 @@
 import argparse
 import logging
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 import numpy as np
 from jaxtyping import Array, Bool, Float32, UInt8

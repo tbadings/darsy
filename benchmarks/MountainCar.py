@@ -1,9 +1,6 @@
-from functools import partial
 from benchmarks.models import MountainCarDynamics
-import jax
 import jax.numpy as jnp
 import numpy as np
-from benchmarks.dynamics import setmath
 from matplotlib import animation
 import numpy as onp
 from matplotlib.patches import Polygon, Circle

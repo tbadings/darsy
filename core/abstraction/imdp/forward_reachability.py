@@ -1,4 +1,3 @@
-import itertools
 import logging
 import time
 from functools import partial

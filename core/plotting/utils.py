@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
 def plot_boxes(ax, model, plot_dimensions=[0, 1], labels=False, latex=False, size=12):

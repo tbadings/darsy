@@ -40,8 +40,12 @@ def parse_arguments(argv=None):
                         help="Number of decimals to work with for storing probabilities")
     parser.add_argument('--pAbs_min', type=_probability, default=0.0001,
                         help="Minimum probability for absorbing states")
-    parser.add_argument('--satprob', type=float, default=1,
-                        help="Lower bound on the satisfaction probability to synthesize a policy for (if <1, then the policy synthesis is terminated once the bound is met).")
+    parser.add_argument('--satprob', type=_probability, default=1,
+                        help="Lower bound on the satisfaction probability to synthesize a policy for. Once the value "
+                             "in the initial state reaches this bound, policy improvement stops and the current "
+                             "policy is only evaluated until convergence; synthesis is not aborted, so the reported "
+                             "value typically ends up above the bound. Applies to robust policy iteration only, so "
+                             "it has no effect with --no-policy_iteration or --solver storm.")
 
     parser.add_argument('--model', type=str, default='',
                         help="Benchmark model to run")
