@@ -82,7 +82,7 @@ class MonteCarloSim():
             s0, _ = self.partition.x2state(x0)
             x[0] = np.random.uniform(
                 low=self.partition.regions['lower_bounds'][s0],
-                high=self.partition.regions['lower_bounds'][s0])
+                high=self.partition.regions['upper_bounds'][s0])
 
         else:
             x[0] = x0
@@ -107,7 +107,7 @@ class MonteCarloSim():
                 # Absorbing region reached
                 x_tuple[k] = -1
 
-                if self.verbose or True:
+                if self.verbose:
                     logger.info(f'- Absorbing state reached at k = {k} (x_k = {x[k]}; s_(k-1) = {s[max(0,k-1)]}; a_(k-1) = {max(0,a[k-1])}), so abort')
                 return trace, success
 
@@ -122,7 +122,7 @@ class MonteCarloSim():
             # If current region is in critical states...
             elif s[k] in self.partition.critical['idxs']:
                 # Then abort current iteration
-                if self.verbose or True:
+                if self.verbose:
                     logger.info('- Critical state reached, so abort')
                 return trace, success
 
@@ -139,7 +139,7 @@ class MonteCarloSim():
                 action_idx = self.policy[k, s[k]]
 
             if action_idx < 0:
-                if self.verbose or True:
+                if self.verbose:
                     logger.info('- No enabled action in the current state (x = %s, k = %d), so abort', x[k], k)
                 return trace, success
 

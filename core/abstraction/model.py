@@ -17,6 +17,8 @@ def parse_linear_model(base_model):
     :return: Model object
     '''
 
+    # TODO: Currently unused and untested
+
     logger.info('Parse linear dynamical model...')
     t = time.time()
 
