@@ -17,6 +17,8 @@ class CartPole(CartPoleDynamics):
 
         # Plot the cart position against the pole angle
         self.plot_dimensions = [0, 2]
+        # State dimensions (cart position, pole angle) animated by plot_trajectory_gif.
+        self.gif_dimensions = [0, 2]
 
         # Set value of delta (how many time steps are grouped together)
         # Used to make the model fully actuated

@@ -31,7 +31,7 @@ if __name__ == "__main__":
 
     # Optional extra arguments: "--batch_size", "1000" / "--noise_distr", "normal".
 
-    # run("IMDP", ["--model", "MountainCar", "--solver", "jax"])
+    run("IMDP", ["--model", "MountainCar", "--solver", "jax"])
     # run("SVMDP", ["--model", "MountainCar", "--solver", "jax"])
 
     # run("IMDP", ["--model", "Pendulum", "--solver", "jax"])

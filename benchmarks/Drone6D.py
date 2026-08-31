@@ -16,6 +16,8 @@ class Drone6D(DroneDynamics):
         DroneDynamics.__init__(self, args, dim=3)
 
         self.plot_dimensions = [0, 2]
+        # Position dimensions, shown as a 3D trace plot in addition to the 2D projection.
+        self.plot_dimensions_3d = [0, 2, 4]
 
         # Set value of delta (how many time steps are grouped together)
         # Used to make the model fully actuated
@@ -95,6 +97,8 @@ class Drone6D_small(DroneDynamics):
         DroneDynamics.__init__(self, args, dim=3)
 
         self.plot_dimensions = [0, 2]
+        # Position dimensions, shown as a 3D trace plot in addition to the 2D projection.
+        self.plot_dimensions_3d = [0, 2, 4]
 
         # Set value of delta (how many time steps are grouped together)
         # Used to make the model fully actuated

@@ -101,7 +101,12 @@ This will:
 2. construct the partition and IMDP abstraction,
 3. solve the robust reachability problem,
 4. run Monte Carlo validation,
-5. save logs, plots, and a `checkpoint.pkl` file.
+5. save logs, plots, and a `checkpoint.pkl` file (the last only with `--save_checkpoint`).
+
+Steps 4 and 5 are best effort. Policy synthesis is the expensive part of a run, so a failure while
+simulating or plotting is logged as an error (with its traceback in `run_<timestamp>.log`) and the
+remaining steps still run, rather than discarding the run. A closing `N post-processing step(s)
+failed: ...` line lists anything that did not produce output.
 
 ## Reusing a checkpoint
 
@@ -170,9 +175,14 @@ Depending on the benchmark and selected options, that directory may contain:
 
 - `checkpoint.pkl`: serialized model, partition, IMDP, and selected arguments.
 - `run_<timestamp>.log`: full log output.
-- heatmaps of values and selected inputs.
-- trajectory plots.
-- benchmark-specific GIFs for models such as Pendulum or MountainCar.
+- `satprob_<timestamp>.{pdf,png}`: heatmap of the satisfaction probability per state.
+- `policy_<timestamp>.{pdf,png}`: heatmap of the first control input selected per state.
+- `traces_<timestamp>.{pdf,png}`: simulated trajectories, projected onto the model's
+  `plot_dimensions` (models with a single plot dimension are drawn against the time step instead).
+- `traces_3d_<timestamp>_view<i>.{pdf,png}`: 3D trajectories, for models that define
+  `plot_dimensions_3d` (such as `Drone6D`).
+- benchmark-specific GIFs for models that define `gif_dimensions` and a `plot_trajectory_gif`
+  method, such as `Pendulum`, `MountainCar`, and `CartPole`.
 
 # Running tests
 
@@ -200,6 +210,8 @@ python tests/run_tests.py test_benchmarks test_test1d_probability_intervals
 # Repository structure
 
 - `benchmarks/`: benchmark model definitions.
+- `core/pipeline.py`: the run pipeline shared by `RunIMDP.py` and `RunSVMDP.py` (run setup,
+  checkpointing, policy extraction, validation, and plotting).
 - `core/abstraction/`: partitioning, IMDP construction, and solver implementations.
 - `core/plotting/`: heatmaps and trajectory visualization.
 - `core/validate/`: Monte Carlo simulation and validation utilities.

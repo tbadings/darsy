@@ -20,6 +20,8 @@ class MountainCar(MountainCarDynamics):
         MountainCarDynamics.__init__(self, args)
 
         self.plot_dimensions = [0, 1]
+        # State dimension animated by plot_trajectory_gif.
+        self.gif_dimensions = [0]
 
         # Set value of delta (how many time steps are grouped together)
         # Used to make the model fully actuated

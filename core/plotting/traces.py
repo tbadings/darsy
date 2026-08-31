@@ -138,13 +138,88 @@ def plot_traces_3d(args, stamp, idx_show, partition, model, traces, num_traces=1
     plt.close(fig)
 
 
-def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_traces=10, add_unsafe_box=True, filename="traces", show_ticks=None):
+def _save_figure(args, stamp, filename):
+    """Write the current figure to the run output directory, as both PDF and PNG."""
+    output_dir = Path(getattr(args, 'output_dir', 'output'))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_dir / f'{filename}_{stamp}.pdf', format='pdf', bbox_inches='tight')
+    plt.savefig(output_dir / f'{filename}_{stamp}.png', format='png', bbox_inches='tight')
+
+
+def _plot_traces_1d(args, stamp, i1, partition, model, traces, num_traces=10, filename="traces", show_ticks=None):
+    """Plot traces of a 1D model as the state against the time step (there is no second state axis)."""
     fig, ax = plt.subplots(figsize=cm2inch(6.1, 5), dpi=300)
 
     font = {'size': 10}
     mpl.rc('font', **font)
 
-    i1, i2 = np.array(idx_show, dtype=int)
+    ax.set_xlabel('$k$', labelpad=2)
+    ax.set_ylabel(_format_state_label_math(model.state_variables[i1]), labelpad=2)
+
+    # Goal and unsafe sets become intervals on the state axis.
+    for boxes, color in ((model.goal, 'green'), (model.critical, 'red')):
+        for box in boxes:
+            ax.axhspan(float(box[0][i1]), float(box[1][i1]), facecolor=color, alpha=0.3, edgecolor=color)
+
+    ax.set_ylim(float(partition.boundary_lb[i1]), float(partition.boundary_ub[i1]))
+
+    # Add traces
+    max_k = 1
+    i = 0
+    for trace in traces.values():
+        state_trace = np.array(trace['x'])[:, i1]
+
+        # Only show trace if there are at least two points
+        if len(state_trace) < 2:
+            continue
+        else:
+            i += 1
+
+        # Stop at desired number of traces
+        if i > num_traces:
+            break
+
+        steps = np.arange(len(state_trace))
+        max_k = max(max_k, int(steps[-1]))
+        ax.plot(steps, state_trace, '-o', color="blue", markersize=1, linewidth=1, alpha=0.6)
+
+    ax.set_xlim(0, max_k)
+
+    # show_ticks overrides args.plot_ticks when explicitly set
+    _show_ticks = args.plot_ticks if show_ticks is None else show_ticks
+
+    if _show_ticks:
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=6, integer=True))
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, pos: f'{x:.3g}'))
+        ax.tick_params(axis='both', which='major', labelsize=6, direction='in', length=3, top=False, right=False)
+    else:
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    # Set tight layout
+    fig.tight_layout()
+
+    if args.plot_title:
+        ax.set_title(f"Simulation for {args.model}")
+
+    _save_figure(args, stamp, filename)
+    plt.close(fig)
+
+
+def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_traces=10, add_unsafe_box=True, filename="traces", show_ticks=None):
+    idx = np.atleast_1d(np.asarray(idx_show, dtype=int))
+    if idx.size == 1:
+        return _plot_traces_1d(args, stamp, int(idx[0]), partition, model, traces,
+                               num_traces=num_traces, filename=filename, show_ticks=show_ticks)
+    if idx.size != 2:
+        raise ValueError(f'Expected one or two plot dimensions to show, got {idx.size}: {idx_show}.')
+    i1, i2 = int(idx[0]), int(idx[1])
+
+    fig, ax = plt.subplots(figsize=cm2inch(6.1, 5), dpi=300)
+
+    font = {'size': 10}
+    mpl.rc('font', **font)
 
     plt.xlabel(_format_state_label_math(model.state_variables[i1]), labelpad=2)
     plt.ylabel(_format_state_label_math(model.state_variables[i2]), labelpad=2)
@@ -282,9 +357,6 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
         ax.set_title(f"Simulation for {args.model}")
 
     # Save figure
-    output_dir = Path(getattr(args, 'output_dir', 'output'))
-    output_dir.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_dir / f'{filename}_{stamp}.pdf', format='pdf', bbox_inches='tight')
-    plt.savefig(output_dir / f'{filename}_{stamp}.png', format='png', bbox_inches='tight')
+    _save_figure(args, stamp, filename)
 
     plt.close(fig)

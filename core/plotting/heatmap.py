@@ -31,10 +31,17 @@ def heatmap(args, stamp, idx_show, slice_values=None, partition=None, results=No
     "ytick.labelsize": 10
 })
 
-    i1, i2 = np.array(idx_show, dtype=int)
+    idx = np.atleast_1d(np.asarray(idx_show, dtype=int))
+    if idx.size == 1:
+        # 1D models have a single plot dimension, so the values are drawn as a single row.
+        i1, i2 = int(idx[0]), None
+    elif idx.size == 2:
+        i1, i2 = int(idx[0]), int(idx[1])
+    else:
+        raise ValueError(f'Expected one or two plot dimensions to show, got {idx.size}: {idx_show}.')
 
     nx = partition.number_per_dim[i1]
-    ny = partition.number_per_dim[i2]
+    ny = partition.number_per_dim[i2] if i2 is not None else 1
 
     idxs = np.asarray(partition.region_idx_inv, dtype=int)
     num_states = len(idxs)
@@ -46,7 +53,7 @@ def heatmap(args, stamp, idx_show, slice_values=None, partition=None, results=No
     # Accumulate sums and counts for states (averaging over missing dimensions)
     valid = ~np.isnan(res)
     x_coords = idxs[valid, i1]
-    y_coords = idxs[valid, i2]
+    y_coords = idxs[valid, i2] if i2 is not None else np.zeros(int(np.count_nonzero(valid)), dtype=int)
     valid_res = res[valid].astype(float)
 
     np.add.at(sum_vals, (y_coords, x_coords), valid_res)
@@ -57,7 +64,7 @@ def heatmap(args, stamp, idx_show, slice_values=None, partition=None, results=No
     values[mask] = sum_vals[mask] / counts[mask]
 
     X = partition.regions_per_dim['centers'][i1]
-    Y = partition.regions_per_dim['centers'][i2]
+    Y = partition.regions_per_dim['centers'][i2] if i2 is not None else np.zeros(1)
 
     DF = pd.DataFrame(values[::-1, :], index=Y[::-1], columns=X)
 
@@ -83,9 +90,14 @@ def heatmap(args, stamp, idx_show, slice_values=None, partition=None, results=No
 
         # Heatmap cells are centered at integer + 0.5 positions.
         ax.set_xticks(x_idx + 0.5)
-        ax.set_yticks(y_idx + 0.5)
         ax.set_xticklabels([fmt(X[i]) for i in x_idx])
-        ax.set_yticklabels([fmt(Y[::-1][i]) for i in y_idx])
+
+        if i2 is None:
+            # The single row carries no second state dimension to label.
+            ax.set_yticks([])
+        else:
+            ax.set_yticks(y_idx + 0.5)
+            ax.set_yticklabels([fmt(Y[::-1][i]) for i in y_idx])
 
         ax.tick_params(axis='x', labelsize=8, rotation=0)
         ax.tick_params(axis='y', labelsize=8, rotation=0)
