@@ -266,7 +266,7 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
     plot_boxes(ax, model, plot_dimensions=[i1, i2])
 
     # Mark missing projected states (from sparse partitions) with a thin red X.
-    idxs = np.asarray(partition.region_idx_inv, dtype=int)
+    idxs = np.asarray(partition.state_id2idx, dtype=int)
     existing_proj = {tuple(v.tolist()) for v in idxs[:, [i1, i2]]}
     w1 = float(partition.cell_width[i1])
     w2 = float(partition.cell_width[i2])

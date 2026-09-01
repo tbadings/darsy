@@ -43,7 +43,7 @@ def heatmap(args, stamp, idx_show, slice_values=None, partition=None, results=No
     nx = partition.number_per_dim[i1]
     ny = partition.number_per_dim[i2] if i2 is not None else 1
 
-    idxs = np.asarray(partition.region_idx_inv, dtype=int)
+    idxs = np.asarray(partition.state_id2idx, dtype=int)
     num_states = len(idxs)
     res = np.asarray(results)[:num_states]
 

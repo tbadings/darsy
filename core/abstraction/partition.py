@@ -6,9 +6,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .polytope import hyperrectangles_isdisjoint_multi
+from .polytope import hyperrectangles_iscontained_multi, hyperrectangles_isdisjoint_multi
 
-EPS = 1e-3
+EPS = 1e-4
 
 logger = logging.getLogger(__name__)
 
@@ -44,70 +44,12 @@ def define_grid_jax(low, high, size):
     return grid
 
 
-@jax.jit
-def center2halfspace(center, cell_width):
-    '''
-    From given centers and cell widths, compute the halfspace inequalities Ax <= b.
-
-    :param center:
-    :param cell_width:
-    :return:
-    '''
-
-    A1 = jnp.identity(len(center))
-    A2 = -jnp.identity(len(center))
-
-    b1 = center + cell_width / 2
-    b2 = -(center - cell_width / 2)
-
-    A = jnp.concatenate((A1, A2))
-    b = jnp.concatenate((b1, b2))
-
-    return A, b
-
-
-# Vectorized function over different polytopes
-from .polytope import points_in_polytope
-
-vmap_points_in_polytope = jax.jit(jax.vmap(points_in_polytope, in_axes=(0, 0, None), out_axes=0))
-
-from .polytope import any_points_in_polytope
-
-vmap_any_points_in_polytope = jax.jit(jax.vmap(any_points_in_polytope, in_axes=(0, 0, None), out_axes=0))
-
-
-@jax.jit
-def check_if_region_in_goal(goals_A, goals_b, points):
-    # Vectorized over all goal regions
-    points_contained = vmap_points_in_polytope(goals_A, goals_b, points)
-
-    # Check for every goal region if all points are contained in the polytope
-    all_points_contained = jnp.all(points_contained, axis=1)
-
-    # If any goal region is contained in the polytope, then set current polytope as goal
-    return jnp.any(all_points_contained)
-
-
-# Vectorized function over different sets of points
-vmap_check_if_region_in_goal = jax.jit(jax.vmap(check_if_region_in_goal, in_axes=(None, None, 0), out_axes=0))
-
-
-@jax.jit
-def get_vertices_from_bounds(lb, ub):
-    # Stack lower and upper bounds in one array
-    stacked = jnp.vstack((lb, ub))
-
-    # Get all vertices (by taking combinations of lower and upper bounds)
-    vertices = meshgrid_jax(stacked.T, lb)
-
-    return vertices
-
-
 # Jitted vmapped kernels used during partition construction. Defined once at module level so the
 # compilation cache is shared across every partition instance (re-wrapping them inside __init__ would
 # force a fresh trace/compile each time).
-vmap_get_vertices_from_bounds = jax.jit(jax.vmap(get_vertices_from_bounds, in_axes=(0, 0), out_axes=0))
-vmap_center2halfspace = jax.jit(jax.vmap(center2halfspace, in_axes=(0, 0), out_axes=(0, 0)))
+vmap_hyperrectangles_iscontained = jax.jit(
+    jax.vmap(hyperrectangles_iscontained_multi, in_axes=(0, 0, None, None), out_axes=0)
+)
 vmap_hyperrectangles_isdisjoint = jax.jit(
     jax.vmap(hyperrectangles_isdisjoint_multi, in_axes=(0, 0, None, None), out_axes=0)
 )
@@ -147,31 +89,18 @@ def _linear_key_dtype(number_per_dim):
     return np.int64
 
 
-def _build_sparse_region_index(centers):
-    centers_np = np.asarray(centers, dtype=np.int64)
-    # Lookup table for Python-side indexing (x2state / grid_idx2state) without allocating dense tensors.
-    region_idx_dict = {tuple(c.tolist()): i for i, c in enumerate(centers_np)}
-    return region_idx_dict
-
-
-def _compute_goal_regions(goal_regions, number_per_dim, all_vertices, region_idxs, size):
+def _compute_goal_regions(goal_regions, lower_bounds, upper_bounds, region_idxs, size):
     '''Boolean mask + index list of partition cells fully contained in any goal region.'''
     t = time.time()
     if len(goal_regions) > 0:
-        # Compute halfspace representation of the goal regions
-        goal_centers = np.zeros((len(goal_regions), len(number_per_dim)))
-        goal_widths = np.zeros((len(goal_regions), len(number_per_dim)))
-        for i, goal in enumerate(goal_regions):
-            goal_centers[i] = (goal[1] + goal[0]) / 2
-            goal_widths[i] = (goal[1] - goal[0]) + EPS
+        # Check which regions (hyperrectangles) are contained in the goal regions (also hyperrectangles)
+        goal_lbs = goal_regions[:, 0, :]
+        goal_ubs = goal_regions[:, 1, :]
 
-        goal_centers = jnp.array(goal_centers, dtype=float)
-        goal_widths = jnp.array(goal_widths, dtype=float)
-
-        goals_A, goals_b = vmap_center2halfspace(goal_centers, goal_widths)
-
-        # Determine goal regions
-        goal_regions_bools = vmap_check_if_region_in_goal(goals_A, goals_b, all_vertices)
+        # Inflate goal regions by tiny EPS to avoid numerical issues with cells that are exactly on the boundary of a goal region.
+        goal_regions_bools = vmap_hyperrectangles_iscontained(
+            lower_bounds, upper_bounds, goal_lbs - EPS, goal_ubs + EPS
+        )
         goal_regions_idxs = region_idxs[goal_regions_bools]
     else:
         goal_regions_bools = jnp.full(size, False, dtype=bool)
@@ -194,6 +123,7 @@ def _compute_critical_regions(critical_regions, lower_bounds, upper_bounds, regi
         critical_lbs = critical_regions[:, 0, :]
         critical_ubs = critical_regions[:, 1, :]
 
+        # Deflate critical regions by tiny EPS to avoid numerical issues with cells that are exactly on the boundary of a critical region.
         critical_regions_bools = ~vmap_hyperrectangles_isdisjoint(
             lower_bounds, upper_bounds, critical_lbs + EPS, critical_ubs - EPS
         )
@@ -231,6 +161,8 @@ class _HyperrectangularPartition(object):
 
         # Retrieve necessary data from the model object
         self.number_per_dim = model.partition['number_per_dim']
+        # Host-side copy: grid_idx2state runs in plain Python, once per simulation step.
+        self.grid_shape = tuple(int(n) for n in self.number_per_dim)
         partition_boundary = model.partition['boundary']
         self.boundary_lb = partition_boundary[0]
         self.boundary_ub = partition_boundary[1]
@@ -244,68 +176,72 @@ class _HyperrectangularPartition(object):
         # (num_states, num_actions, dim) for the sparse grid.
         t = time.time()
         centers_unit, actions = self._cells_and_actions(model)
-        centers = jnp.array(centers_unit, dtype=int)
-
-        # Build the Python-side lookup table (used by x2state / grid_idx2state).
-        self.region_idx_dict = _build_sparse_region_index(centers)
 
         # JAX-friendly sparse index map via linearized coordinates and searchsorted.
         # We store sorted linear keys and aligned state IDs so lookup can stay inside JIT.
         idx_np_dtype = _linear_key_dtype(self.number_per_dim)
         idx_jnp_dtype = jnp.int64 if idx_np_dtype == np.int64 else jnp.int32
         region_linear_strides = _compute_linear_strides(self.number_per_dim).astype(idx_np_dtype)
-        centers_np = np.asarray(centers, dtype=idx_np_dtype)
+
         # Linear key for each kept cell index tuple.
+        centers_np = np.asarray(centers_unit, dtype=idx_np_dtype)
         region_linear_idx = np.sum(centers_np * region_linear_strides, axis=1, dtype=idx_np_dtype)
         order = np.argsort(region_linear_idx)
 
-        # Sorted keys -> sorted state IDs (parallel arrays used by jnp.searchsorted). Keys must go
-        # through jnp.asarray: jnp.array() canonicalizes an int64 host array to int32 *before* applying
-        # dtype, so it would hand back int64-typed keys whose values have already wrapped.
+        # region_linear_idx = the sorted linear keys of the kept cells (might contain gaps if the partition is sparse)
+        # region_linear_state = the state ID of each kept cell (never contains gaps, always just a range)
+        # region_linear_strides = the row-major strides to map an n-D grid index to a linear key
         self.region_linear_idx = jnp.asarray(region_linear_idx[order], dtype=idx_jnp_dtype)
         self.region_linear_state = jnp.asarray(np.arange(len(centers_np), dtype=np.int32)[order], dtype=jnp.int32)
         self.region_linear_strides = jnp.asarray(region_linear_strides, dtype=idx_jnp_dtype)
 
+        # A dense grid emits its cells in row-major order, so the linear key of a cell *is* its state
+        # ID. Both grid_idx2state and the DP's successor-ID fast path (successor_ids.box_to_ids_single)
+        # depend on that; check it rather than assume it, since a violation would silently resolve
+        # every lookup to the wrong state.
+        if self.rectangular and not np.array_equal(region_linear_idx, np.arange(len(centers_np))):
+            raise ValueError('Dense partition cells are not in row-major order.')
+
         # Unit-cube index tuple for each state (used to map a state ID back to grid coordinates).
-        self.region_idx_inv = centers
+        self.state_id2idx = centers_unit
 
         # Now scale the unit-cube partition to physical coordinates.
-        centers = centers_unit * self.cell_width + lb_center
+        centers_shifted = centers_unit * self.cell_width + lb_center
 
-        region_idxs = jnp.arange(len(centers))
-        lower_bounds = centers - self.cell_width / 2
-        upper_bounds = centers + self.cell_width / 2
+        region_idxs = jnp.arange(len(centers_shifted))
+        lower_bounds = centers_shifted - self.cell_width / 2
+        upper_bounds = centers_shifted + self.cell_width / 2
 
-        # Determine the vertices of all partition elements (only needed transiently for goal detection).
-        all_vertices = vmap_get_vertices_from_bounds(lower_bounds, upper_bounds)
         logger.debug(f'- Grid points defined (took {(time.time() - t):.3f} sec.)')
 
         self.regions = {
-            'centers': jnp.array(centers, dtype=float),
+            'centers': jnp.array(centers_shifted, dtype=float),
             'idxs': region_idxs,
             'lower_bounds': lower_bounds,
             'upper_bounds': upper_bounds,
             'actions': actions,
         }
-        self.size = len(centers)
+        self.size = len(centers_shifted)
 
         # Sentinel state id used by JAX kernels for coordinates that are not present.
         self.missing_state = int(self.size)
 
         # Also store the partition bounds per dimension
-        elems_per_dim = [jnp.arange(num) for num in self.number_per_dim]
-        centers_per_dim = [elems_per_dim[i] * self.cell_width[i] + lb_center[i] for i in range(self.dimension)]
+        idx_per_dim = [jnp.arange(num) for num in self.number_per_dim]
+        centers_per_dim = [idx_per_dim[i] * self.cell_width[i] + lb_center[i] for i in range(self.dimension)]
         lower_bounds_per_dim = [jnp.array(centers_per_dim[i] - self.cell_width[i] / 2) for i in range(self.dimension)]
         upper_bounds_per_dim = [jnp.array(centers_per_dim[i] + self.cell_width[i] / 2) for i in range(self.dimension)]
 
         self.regions_per_dim = {
             'centers': centers_per_dim,
-            'idxs': elems_per_dim,
+            'idxs': idx_per_dim,
             'lower_bounds': lower_bounds_per_dim,
             'upper_bounds': upper_bounds_per_dim,
         }
 
-        self.goal = _compute_goal_regions(model.goal, self.number_per_dim, all_vertices, region_idxs, self.size)
+        self.goal = _compute_goal_regions(
+            model.goal, self.regions['lower_bounds'], self.regions['upper_bounds'], region_idxs, self.size
+        )
         self.critical = _compute_critical_regions(
             model.critical, self.regions['lower_bounds'], self.regions['upper_bounds'], region_idxs, self.size
         )
@@ -338,10 +274,24 @@ class _HyperrectangularPartition(object):
 
     def grid_idx2state(self, grid_idx):
         '''Map a unit-cube grid index tuple to its (state ID, exists).'''
-        state = self.region_idx_dict.get(tuple(np.asarray(grid_idx, dtype=int).tolist()), -1)
-        if state == -1:
-            return self.size, False
-        return int(state), True
+        
+        key = 0
+        for value, num in zip(grid_idx, self.grid_shape):
+            value = int(value)
+            if not 0 <= value < num:
+                return self.size, False
+            key = key * num + value
+
+        if self.rectangular:
+            # Dense grid: cells are stored in key order, so the key is the state ID.
+            return key, True
+
+        # Sparse grid: only some cells are kept, so the key has to be looked up among them.
+        keys = np.asarray(self.region_linear_idx)
+        pos = int(np.searchsorted(keys, key))
+        if pos < len(keys) and keys[pos] == key:
+            return int(np.asarray(self.region_linear_state)[pos]), True
+        return self.size, False
 
 
 class DensePartition(_HyperrectangularPartition):
@@ -359,7 +309,7 @@ class DensePartition(_HyperrectangularPartition):
         # Full dense grid where each region is a unit cube.
         lb_unit = jnp.zeros(self.dimension, dtype=int)
         ub_unit = jnp.array(self.number_per_dim - 1, dtype=int)
-        centers_unit = define_grid_jax(lb_unit, ub_unit, self.number_per_dim)
+        centers_unit = jnp.array(define_grid_jax(lb_unit, ub_unit, self.number_per_dim), dtype=int)
 
         # Discrete action grid: Cartesian product of the per-dimension action grids.
         discrete_actions_per_dimension = [

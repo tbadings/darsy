@@ -76,6 +76,31 @@ def hyperrectangles_isdisjoint(lb1, ub1, lb2, ub2):
 vmap_hyperrectangles_isdisjoint = jax.jit(jax.vmap(hyperrectangles_isdisjoint, in_axes=(None, None, 0, 0), out_axes=0))
 
 
+def hyperrectangles_iscontained(lb1, ub1, lb2, ub2):
+    """
+    Check if hyperrectangle (lb1, ub1) is fully contained in hyperrectangle (lb2, ub2).
+
+    Algorithm:
+    ``H1 is contained in H2 iff lb2 <= lb1 and ub1 <= ub2, where <= is taken component-wise.``
+    """
+
+    return jnp.all((lb1 >= lb2) & (ub1 <= ub2))
+
+
+vmap_hyperrectangles_iscontained = jax.jit(jax.vmap(hyperrectangles_iscontained, in_axes=(None, None, 0, 0), out_axes=0))
+
+
+def hyperrectangles_iscontained_multi(lb1, ub1, lbs2, ubs2):
+    """
+    Check if one hyperrectangle (lb1, ub1) is contained in any of multiple other hyperrectangles
+    given by (lbs2, ubs2).
+    """
+
+    contained = vmap_hyperrectangles_iscontained(lb1, ub1, lbs2, ubs2)
+
+    return jnp.any(contained)
+
+
 def hyperrectangles_isdisjoint_multi(lb1, ub1, lbs2, ubs2):
     '''
     Check if one hyperrectangle (lb1, ub1) is disjoint from multiple other hyperrectangles given by (lbs2, ubs2)

@@ -101,7 +101,7 @@ class MonteCarloSim():
 
             if in_partition:
                 # Save that state is currently in state s_current
-                x_tuple[k] = self.partition.region_idx_inv[s[k]]
+                x_tuple[k] = self.partition.state_id2idx[s[k]]
 
             else:
                 # Absorbing region reached
