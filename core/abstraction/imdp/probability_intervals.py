@@ -11,18 +11,31 @@ logger = logging.getLogger(__name__)
 
 # Note: The following implementation supports Gaussian and Triangular noise distributions.
 
+def wrap_pad(V, size):
+    '''
+    Repeat the first `size` entries of V at the end, so that dynslice can never read past the array.
+
+    :param V: Vector to pad.
+    :param size: Slice length dynslice will be called with (must be <= len(V)).
+    :return: V with its first `size` entries appended.
+    '''
+    return jnp.concatenate([V, V[:size]])
+
 def dynslice(V, idx_low, size):
     '''
-    Given a vector of indices, keep only those starting at position idx_low and of length size.
+    Given a vector of indices, keep only those starting at position idx_low and of length size,
+    wrapping around the end of the (unpadded) vector.
 
-    :param V: Vector of indices.
+    V must be wrap-padded by `wrap_pad` with this same size, which makes the slice equal to
+    jnp.roll(V, -idx_low)[:size] on the unpadded vector while reading only `size` elements instead
+    of the whole vector.
+
+    :param V: Vector of indices, wrap-padded by `wrap_pad`.
     :param idx_low: Index to start slice at.
     :param size: Number of elements to keep in slice.
     :return: Slice of V.
     '''
-    roll = jnp.roll(V, -idx_low)
-    # roll_zero = roll.at[size:].set(0)
-    return roll[:size]
+    return jax.lax.dynamic_slice(V, (idx_low,), (size,))
 
 def interval_distribution(i_lb, mean_lb, mean_ub, *,
                           n, max_slice, wrap, wrap_array, decimals,
@@ -30,15 +43,16 @@ def interval_distribution(i_lb, mean_lb, mean_ub, *,
                           state_space_lb, state_space_ub,
                           region_linear_idx, region_linear_state,
                           region_linear_strides, missing_state,
-                          unsafe_states, noise):
+                          unsafe_states, noise, dense):
     '''
     For a given state-action pair, compute the probability intervals over all successor states.
 
     High-level steps:
       1. Compute probability bounds: slice partition boundaries around the reachable region,
          query the noise distribution per dimension, and form joint bounds via outer product.
-      2. Resolve state IDs: map the flat n-D grid indices to 1-D partition state IDs via a
-         sparse binary-search lookup; cells absent from the partition get a sentinel ID.
+      2. Resolve state IDs: map the flat n-D grid indices to 1-D partition state IDs; on a dense
+         partition the linear cell key is already the state ID, otherwise it is looked up by a
+         sparse binary search and cells absent from the partition get a sentinel ID.
       3. Build the interval distribution: accumulate probability mass for absent (missing)
          cells as absorbing failure, filter to nonzero successor cells, enforce a minimum
          lower bound for graph-preservation, and compute the total absorbing probability.
@@ -72,35 +86,44 @@ def interval_distribution(i_lb, mean_lb, mean_ub, *,
     prob_low_prod  = jnp.round(reduce(lambda a, b: a[..., None] * b, prob_low).reshape(-1),  decimals)
     prob_high_prod = jnp.round(reduce(lambda a, b: a[..., None] * b, prob_high).reshape(-1), decimals)
 
-    # Build the flat list of n-D grid indices matching the outer-product ordering.
-    # indexing='ij' gives shape (max_slice[0], ..., max_slice[n-1]) per grid array;
-    # stacking on axis=-1 and flattening matches C-order of the outer products above.
-    prob_idx = jnp.stack(jnp.meshgrid(*prob_idx, indexing='ij'), axis=-1).reshape(-1, n)
+    # Per-dimension contribution of each cell to its linear key, and whether it falls outside the
+    # grid. Clip before linearizing; out-of-range cells are filtered via in_partition_bounds below.
+    key_per_dim = [jnp.clip(idx, 0, number_per_dim[i] - 1).astype(region_linear_strides.dtype) * region_linear_strides[i]
+                   for i, idx in enumerate(prob_idx)]
+    oob_per_dim = [(idx < 0) | (idx >= number_per_dim[i]) for i, idx in enumerate(prob_idx)]
 
-    # At this point, we have for each cell in the n-D slice defined by max_slice:
+    # Combine across dimensions the same way as the probability bounds above (outer sum / outer OR
+    # rather than outer product), so the ordering matches and no [prod(max_slice), n] index array is
+    # ever built. After this, for each cell in the n-D slice defined by max_slice we have:
     # - prob_low_prod, prob_high_prod: the lower and upper bounds of the probability (shape: [prod(max_slice)])
-    # - prob_idx: the corresponding n-D grid index of that cell within the overall partition grid (shape: [prod(max_slice), n])
+    # - linear_prob_idx: its linear key within the overall partition grid (shape: [prod(max_slice)])
+    # - in_partition_bounds: whether it lies inside that grid at all (shape: [prod(max_slice)])
+    linear_prob_idx     =  reduce(lambda a, b: a[..., None] + b, key_per_dim).reshape(-1)
+    in_partition_bounds = ~reduce(lambda a, b: a[..., None] | b, oob_per_dim).reshape(-1)
 
-    # --- Step 2: Resolve state IDs (sparse lookup) ---
-    # Clip to grid bounds before linearization; out-of-range points are filtered separately below.
-    prob_idx_clip = jnp.clip(prob_idx, 0, number_per_dim - 1)
-    # Convert each n-D index to a scalar key using the partition strides.
-    linear_prob_idx = jnp.sum(prob_idx_clip.astype(region_linear_strides.dtype) * region_linear_strides, axis=1)
-    # Binary search in the sorted sparse key array, then verify exact match.
-    pos = jnp.searchsorted(region_linear_idx, linear_prob_idx, side='left')
-    pos_clip = jnp.minimum(pos, region_linear_idx.shape[0] - 1)
-    valid = (pos < region_linear_idx.shape[0]) & (region_linear_idx[pos_clip] == linear_prob_idx)
-    # Cells absent from the sparse partition map to a sentinel ID and are handled in step 3.
-    # prob_id is an array of shape [prod(max_slice)] and gives the partition state ID for each cell in the n-D slice, 
-    # or missing_state if that cell is absent from the sparse partition.
-    prob_id = jnp.where(valid, region_linear_state[pos_clip], missing_state)
+    # --- Step 2: Resolve state IDs ---
+    # prob_id is an array of shape [prod(max_slice)] and gives the partition state ID for each cell in
+    # the n-D slice, or missing_state if that cell is absent from the (sparse) partition.
+    if dense:
+        # Dense rectangular grid: cells are stored in row-major key order (enforced by the
+        # 'Dense partition cells are not in row-major order' check in the partition), so the sorted
+        # keys are exactly 0..S-1 and region_linear_state is the identity -- the key *is* the state
+        # ID, with neither a binary search nor a gather. Keys are clipped to the grid above, so
+        # nothing can be missing; cells outside the grid are dropped by in_partition_bounds below.
+        prob_id = linear_prob_idx
+    else:
+        # Binary search in the sorted sparse key array, then verify exact match.
+        pos = jnp.searchsorted(region_linear_idx, linear_prob_idx, side='left')
+        pos_clip = jnp.minimum(pos, region_linear_idx.shape[0] - 1)
+        valid = (pos < region_linear_idx.shape[0]) & (region_linear_idx[pos_clip] == linear_prob_idx)
+        # Cells absent from the sparse partition map to a sentinel ID and are handled in step 3.
+        prob_id = jnp.where(valid, region_linear_state[pos_clip], missing_state)
 
     p_lowest = 10 ** -decimals
 
     # --- Step 3: Build the interval distribution ---
     # Cells within grid bounds but absent from the sparse partition are treated as absorbing
     # failure (rather than silently discarding their probability mass).
-    in_partition_bounds = jnp.all((prob_idx >= 0) & (prob_idx < number_per_dim), axis=1)
     missing_cell_mask = (prob_high_prod > p_lowest) & in_partition_bounds & (prob_id == missing_state)
     missing_absorbing = jnp.array([
         jnp.sum(prob_low_prod  * missing_cell_mask),
@@ -185,8 +208,9 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
         wrap_array=model.wrap,
         decimals=args.decimals,
         number_per_dim=partition.number_per_dim,
-        per_dim_lb=partition.regions_per_dim['lower_bounds'],
-        per_dim_ub=partition.regions_per_dim['upper_bounds'],
+        # Wrap-padded so dynslice can take a fixed-length slice without reading past the array.
+        per_dim_lb=[wrap_pad(partition.regions_per_dim['lower_bounds'][i], actions.max_slice[i]) for i in range(model.n)],
+        per_dim_ub=[wrap_pad(partition.regions_per_dim['upper_bounds'][i], actions.max_slice[i]) for i in range(model.n)],
         state_space_lb=jax.device_put(partition.boundary_lb),
         state_space_ub=jax.device_put(partition.boundary_ub),
         region_linear_idx=jax.device_put(partition.region_linear_idx),
@@ -195,6 +219,7 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
         missing_state=partition.missing_state,
         unsafe_states=jax.device_put(jnp.concatenate((partition.critical['bools'], jnp.array([False])))),
         noise=model.noise,
+        dense=bool(partition.rectangular),
     )
 
     # vmap over the 3 per-action args only; all constants are captured in the closure

@@ -43,7 +43,7 @@ if __name__ == "__main__":
     # run("IMDP", ["--model", "Dubins4D", "--solver", "jax"])
     # run("SVMDP", ["--model", "Dubins4D", "--solver", "jax"])
 
-    run("IMDP", ["--model", "Drone4D", "--solver", "jax", "--log-level", "DEBUG"])
+    run("IMDP", ["--model", "Drone4D", "--solver", "jax"])
     # run("SVMDP", ["--model", "Drone4D", "--solver", "jax"])
 
     # Still too big to run:
