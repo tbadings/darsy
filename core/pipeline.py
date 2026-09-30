@@ -188,8 +188,7 @@ def extract_policy_inputs(args, partition, policy, nr_states):
 
     actions_np = np.array(partition.regions['actions'])
     # DensePartition stores (1, num_actions, action_dim); broadcast to all states.
-    if actions_np.shape[0] == 1:
-        actions_np = np.broadcast_to(actions_np, (nr_states - 1, *actions_np.shape[1:]))
+    actions_np = np.broadcast_to(actions_np, (nr_states - 1, *actions_np.shape[1:]))
 
     policy_inputs = np.full(
         (nr_states - 1, actions_np.shape[2]), fill_value=float('nan'), dtype=float_dtype

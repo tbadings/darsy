@@ -248,18 +248,13 @@ class RectangularForward(object):
         max_active_noise_cells = 0
 
         # Process state regions in batches: each call handles a [batch, num_actions] computation
-        # instead of one [num_actions] computation, reducing Python–JAX round trips by frs_batch_size.
+        actions_slice = partition.regions['actions']
         starts, ends = create_batches(self.num_regions, args.frs_batch_size)
         pbar = tqdm(zip(starts, ends), total=len(starts))
         for batch_start, batch_end in pbar:
             batch_size = batch_end - batch_start
-            actions_slice = partition.regions['actions']
             # DensePartition stores actions as (1, num_actions, action_dim); broadcast to batch size.
-            # SparsePartition stores (num_states, num_actions, action_dim); slice normally.
-            if actions_slice.shape[0] == 1:
-                actions_batch = jnp.broadcast_to(actions_slice, (batch_size, *actions_slice.shape[1:]))
-            else:
-                actions_batch = actions_slice[batch_start:batch_end]
+            actions_batch = jnp.broadcast_to(actions_slice, (batch_size, *actions_slice.shape[1:]))
             # Only the three loop-varying arguments are passed; the rest are bound in frs_fn.
             frs_span, frs_lb, frs_ub, frs_prob, frs_nact = batch_forward_reach(
                 partition.regions['lower_bounds'][batch_start:batch_end],

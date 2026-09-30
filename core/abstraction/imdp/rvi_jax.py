@@ -145,7 +145,8 @@ def RVI_JAX(
     # Padding the probability intervals and successor values for JAX vectorization
     total_actions = np.array([len(imdp.A_id[s]) for s in imdp.states if s in imdp.A_id])
     max_actions = np.max(total_actions) if len(total_actions) > 0 else 0
-    max_successors = max([imdp.S_id[s].shape[1] + 1 for s in imdp.states if s in imdp.S_id]) # +1 for absorbing state
+    successors_counts = [imdp.S_id[s].shape[1] + 1 for s in imdp.states if s in imdp.S_id]
+    max_successors = max(successors_counts) if successors_counts else 1
 
     if policy_iteration:
         logger.info('=== Run robust policy iteration ===')

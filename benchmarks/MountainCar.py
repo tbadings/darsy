@@ -20,10 +20,6 @@ class MountainCar(MountainCarDynamics):
         # State dimension animated by plot_trajectory_gif.
         self.gif_dimensions = [0]
 
-        # Set value of delta (how many time steps are grouped together)
-        # Used to make the model fully actuated
-        self.lump = 1
-
         self.set_spec()
 
     def set_spec(self):

@@ -13,10 +13,6 @@ class Test1D(Test1DDynamics):
 
         self.plot_dimensions = [0]
 
-        # Set value of delta (how many time steps are grouped together)
-        # Used to make the model fully actuated
-        self.lump = 1
-
         self.set_spec()
 
     def set_spec(self):
@@ -32,9 +28,9 @@ class Test1D(Test1DDynamics):
         self.uMax = [1]
         self.num_actions = [3]
 
-        self.partition['boundary'] = np.array([[-5], [5]])
+        self.partition['boundary'] = np.array([[-20], [20]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([10])
+        self.partition['number_per_dim'] = np.array([100])
 
         self.goal = np.array([
             [[-1], [1]]
@@ -43,6 +39,6 @@ class Test1D(Test1DDynamics):
         self.critical = np.array([
         ], dtype=float)
 
-        self.x0 = np.array([-2.5])
+        self.x0 = np.array([-15])
 
         return

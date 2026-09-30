@@ -4,18 +4,11 @@ import numpy as np
 
 
 class DoubleIntegrator(DoubleIntegratorDynamics):
-    '''
-    Dubin's vehicle benchmark, with a 4D state space and a 2D control input space.
-    '''
 
     def __init__(self, args):
         DoubleIntegratorDynamics.__init__(self, args)
 
         self.plot_dimensions = [0, 1]
-
-        # Set value of delta (how many time steps are grouped together)
-        # Used to make the model fully actuated
-        self.lump = 1
 
         self.set_spec()
 
@@ -34,7 +27,7 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
 
         self.partition['boundary'] = np.array([[-21, -10.5], [21, 10.5]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([21, 21])
+        self.partition['number_per_dim'] = np.array([51, 51])
 
         self.goal = np.array([
             [[-4, -2], [4, 2]]

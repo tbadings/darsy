@@ -36,8 +36,6 @@ def parse_arguments(argv=None):
                         help="If True, perform additional checks to debug python")
     parser.add_argument('--seed', type=int, default=0,
                         help="Seed for random number generators (Jax, Numpy)")
-    parser.add_argument('--decimals', type=_nonnegative_int, default=4,
-                        help="Number of decimals to work with for storing probabilities")
     parser.add_argument('--pAbs_min', type=_probability, default=0.0001,
                         help="Minimum probability for absorbing states")
     parser.add_argument('--satprob', type=_probability, default=1,
@@ -66,10 +64,17 @@ def parse_arguments(argv=None):
     
     parser.add_argument('--batch_size', type=_positive_int, default=100,
                         help="For computing the transition probability intervals, the number of states to process in a vectorized fashion (Warning: increasing this too much drastically increases memory usage for JIT compilation by JAX!)")
-    parser.add_argument('--frs_batch_size', type=_positive_int, default=1000,
+    parser.add_argument('--frs_batch_size', type=_positive_int, default=100,
                         help="Number of state regions to process per batch when computing forward reachable sets. Larger values reduce Python-JAX round trips but increase peak memory usage.")
-    parser.add_argument('--shrink_frs', type=float, default=0.0001,
-                        help="Amount to shrink forward reachable set bounds inward for numerical stability (avoids misclassification when the FRS lands exactly on a cell boundary).")
+    parser.add_argument('--num_samples', type=_positive_int, default=1000,
+                        help="Number of samples per (cell, action) pair for data-driven forward reachable set computation.")
+    parser.add_argument('--alpha', type=_probability, default=0.00,
+                        help="Coverage level for the FRS percentile interval. The FRS is the "
+                             "[alpha/2, 100-alpha/2] percentile envelope of sampled next states.")
+    parser.add_argument('--pac_beta', type=_probability, default=0.005,
+                        help="Confidence level for Clopper-Pearson PAC bounds on transition "
+                             "probability intervals. Smaller values give wider, more conservative intervals.")
+
     parser.add_argument('--log-level', type=str, default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                         help='Logging verbosity level')
     parser.add_argument('--output_root', type=str, default='output',

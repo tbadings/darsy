@@ -11,7 +11,7 @@ from .Test1D import Test1D
 
 
 def create_model(args):
-	from core.abstraction.model import parse_linear_model, parse_nonlinear_model
+	from core.abstraction.model import parse_model
 
 	model_map = {
 		'Dubins3D': Dubins3D,
@@ -30,8 +30,4 @@ def create_model(args):
 	if model_cls is None:
 		raise ValueError(f"The passed model '{args.model}' could not be found")
 
-	base_model = model_cls(args)
-
-	if base_model.linear:
-		return parse_linear_model(base_model)
-	return parse_nonlinear_model(base_model)
+	return parse_model(model_cls(args))
