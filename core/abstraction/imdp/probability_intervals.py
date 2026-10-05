@@ -32,16 +32,10 @@ def compute_cp_table(num_samples: int, beta: float) -> tuple[np.ndarray, np.ndar
     """
     k = np.arange(num_samples + 1)
     cp_table_lb = np.zeros(num_samples + 1, dtype=np.float64)
-    cp_table_ub = np.zeros(num_samples + 1, dtype=np.float64)
+    cp_table_ub = np.ones(num_samples + 1, dtype=np.float64)
 
-    # Clopper-Pearson lower bound (k=0 remains 0.0)
     cp_table_lb[1:] = scipy.stats.beta.ppf(beta / 2.0, k[1:], num_samples - k[1:] + 1)
-
-    # Clopper-Pearson upper bound (k=0 remains 0.0 for unreachable states)
-    cp_table_ub[1:num_samples] = scipy.stats.beta.ppf(
-        1.0 - beta / 2.0, k[1:num_samples] + 1, num_samples - k[1:num_samples]
-    )
-    cp_table_ub[num_samples] = 1.0
+    cp_table_ub[:-1] = scipy.stats.beta.ppf(1.0 - beta / 2.0, k[:-1] + 1, num_samples - k[:-1])
 
     return cp_table_lb, cp_table_ub
 
