@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def _make_forward_reach(step_fn, noise_sample_fn, num_samples, alpha,
-                        state_wrap, number_per_dim, cell_width, boundary_lb, boundary_ub):
+                        number_per_dim, cell_width, boundary_lb, boundary_ub, lipschitz):
     pct_lo = 100 * alpha / 2
     pct_hi = 100 * (1 - alpha / 2)
     norm_scale = number_per_dim / (boundary_ub - boundary_lb)
@@ -27,12 +27,17 @@ def _make_forward_reach(step_fn, noise_sample_fn, num_samples, alpha,
         frs_min = jnp.percentile(next_states, pct_lo, axis=0)
         frs_max = jnp.percentile(next_states, pct_hi, axis=0)
 
+        # Inflate FRS by cell diameter * Lipschitz matrix
+        cell_diameter = state_max - state_min
+        inflation = jnp.dot(cell_diameter, lipschitz.T)
+        frs_min = frs_min - inflation
+        frs_max = frs_max + inflation
+
         frs_span = (jnp.ceil((frs_max - frs_min) / cell_width) + 1).astype(jnp.int32)
         lb_contained_in = (frs_min - boundary_lb) * norm_scale // 1
 
-        idx_low = (jnp.clip(lb_contained_in, 0, number_per_dim - 1) * (~state_wrap)).astype(jnp.int16)
-        idx_upp = (jnp.clip(lb_contained_in + frs_span - 1, 0, number_per_dim - 1) * (~state_wrap)
-                   + (number_per_dim - 1) * state_wrap).astype(jnp.int32)
+        idx_low = jnp.clip(lb_contained_in, 0, number_per_dim - 1).astype(jnp.int16)
+        idx_upp = jnp.clip(lb_contained_in + frs_span - 1, 0, number_per_dim - 1).astype(jnp.int32)
 
         return idx_low, idx_upp - idx_low + 1
 
@@ -46,16 +51,18 @@ class RectangularForward:
         logger.info('=== Start forward reachability computations ===')
         t_total = time.time()
 
+        lipschitz_np = np.asarray(np.atleast_2d(model.lipschitz), dtype=np.float32)
+
         batch_forward_reach = _make_forward_reach(
             model.step,
             model.noise.sample_jax,
             args.num_samples,
             args.alpha,
-            jax.device_put(model.wrap),
             jax.device_put(partition.number_per_dim),
             jax.device_put(partition.cell_width),
             jax.device_put(partition.boundary_lb),
             jax.device_put(partition.boundary_ub),
+            jax.device_put(lipschitz_np),
         )
 
         num_regions = len(partition.regions['lower_bounds'])
