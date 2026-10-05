@@ -115,7 +115,7 @@ def _make_batch_kernel(
         succ_ids = jnp.sum(clipped_grid * strides, axis=-1).astype(jnp.int32)
         succ_ids = jnp.where(cell_valid, succ_ids, 0)
 
-        return counts_lb, counts_ub, succ_ids, count_abs_lb, count_abs_ub
+        return counts_lb, counts_ub, succ_ids, cell_valid, count_abs_ub
 
     return jax.jit(jax.vmap(
         jax.vmap(single_action_counts, in_axes=(None, None, 0, 0, 0)),
@@ -204,7 +204,7 @@ def compute_probability_intervals(
         master_rng, subkey = jax.random.split(master_rng)
         rngs = jax.random.split(subkey, cur_batch_size * num_actions).reshape(cur_batch_size, num_actions, 2)
 
-        res_lb, res_ub, res_succ, _, res_abs_ub = batch_kernel(
+        res_lb, res_ub, res_succ, res_valid, res_abs_ub = batch_kernel(
             lb_batch,
             ub_batch,
             act_batch,
@@ -212,13 +212,13 @@ def compute_probability_intervals(
             rngs,
         )
 
-        counts_lb_np, counts_ub_np, succ_ids_np, abs_ub_np = jax.device_get(
-            (res_lb, res_ub, res_succ, res_abs_ub)
+        counts_lb_np, counts_ub_np, succ_ids_np, valid_np, abs_ub_np = jax.device_get(
+            (res_lb, res_ub, res_succ, res_valid, res_abs_ub)
         )
 
-        # Look up probability intervals from Clopper-Pearson table
-        prob_lb = cp_table_lb[counts_lb_np]
-        prob_ub = cp_table_ub[counts_ub_np]
+        # Look up probability intervals from Clopper-Pearson table for valid grid-aligned cells
+        prob_lb = np.where(valid_np, cp_table_lb[counts_lb_np], 0.0)
+        prob_ub = np.where(valid_np, cp_table_ub[counts_ub_np], 0.0)
         p_abs_ub = cp_table_ub[abs_ub_np]
         p_abs_lb = np.zeros_like(p_abs_ub)
 
