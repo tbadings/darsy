@@ -33,11 +33,8 @@ def _make_forward_reach(step_fn, noise_sample_fn, num_samples, alpha,
         frs_min = frs_min - inflation
         frs_max = frs_max + inflation
 
-        frs_span = (jnp.ceil((frs_max - frs_min) / cell_width) + 1).astype(jnp.int32)
-        lb_contained_in = (frs_min - boundary_lb) * norm_scale // 1
-
-        idx_low = jnp.clip(lb_contained_in, 0, number_per_dim - 1).astype(jnp.int16)
-        idx_upp = jnp.clip(lb_contained_in + frs_span - 1, 0, number_per_dim - 1).astype(jnp.int32)
+        idx_low = jnp.clip(jnp.floor((frs_min - boundary_lb) * norm_scale), 0, number_per_dim - 1).astype(jnp.int16)
+        idx_upp = jnp.clip(jnp.floor((frs_max - boundary_lb) * norm_scale), 0, number_per_dim - 1).astype(jnp.int32)
 
         return idx_low, idx_upp - idx_low + 1
 
