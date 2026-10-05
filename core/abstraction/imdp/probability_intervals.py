@@ -50,7 +50,6 @@ def _make_batch_kernel(
     cell_width: jnp.ndarray,
     boundary_lb: jnp.ndarray,
     boundary_ub: jnp.ndarray,
-    wrap: jnp.ndarray,
     lipschitz: jnp.ndarray,
     max_slice: jnp.ndarray,
 ):
@@ -80,7 +79,7 @@ def _make_batch_kernel(
         succ_ub = succ_lb + cell_width
 
         # In-bounds mask for successor cells
-        in_bounds_dim = jnp.where(wrap, True, (grid_coords >= 0) & (grid_coords < number_per_dim))
+        in_bounds_dim = (grid_coords >= 0) & (grid_coords < number_per_dim)
         cell_valid = jnp.all(in_bounds_dim, axis=-1)
 
         # Check containment and intersections against FRS cells
@@ -107,13 +106,12 @@ def _make_batch_kernel(
         count_abs_lb = jnp.int32(0)
 
         # All boxes that intersect with outside of the FRS count towards the upper bound of absorbing
-        not_inside_frs_dim = jnp.where(wrap, False, (b_lb < frs_valid_lb) | (b_ub > frs_valid_ub))
+        not_inside_frs_dim = (b_lb < frs_valid_lb) | (b_ub > frs_valid_ub)
         box_intersects_abs = jnp.any(not_inside_frs_dim, axis=-1)
         count_abs_ub = jnp.sum(box_intersects_abs).astype(jnp.int32)
 
         # Successor state IDs
-        resolved_grid = jnp.where(wrap, grid_coords % number_per_dim, grid_coords)
-        clipped_grid = jnp.clip(resolved_grid, 0, number_per_dim - 1)
+        clipped_grid = jnp.clip(grid_coords, 0, number_per_dim - 1)
         succ_ids = jnp.sum(clipped_grid * strides, axis=-1).astype(jnp.int32)
         succ_ids = jnp.where(cell_valid, succ_ids, 0)
 
@@ -164,7 +162,6 @@ def compute_probability_intervals(
     offsets_np = np.indices(actions.max_slice).reshape(dim, -1).T
     strides_np = _compute_linear_strides(partition.number_per_dim)
     lipschitz_np = np.asarray(np.atleast_2d(model.lipschitz), dtype=np.float32)
-    wrap_np = np.asarray(model.wrap, dtype=bool)
 
     P_full: dict[int, np.ndarray] = {}
     S_id: dict[int, np.ndarray] = {}
@@ -175,7 +172,6 @@ def compute_probability_intervals(
     actions_slice = partition.regions['actions']
     lower_bounds = partition.regions['lower_bounds']
     upper_bounds = partition.regions['upper_bounds']
-    critical_mask = np.asarray(partition.critical['bools'], dtype=bool)
 
     master_rng = jax.random.PRNGKey(args.seed)
 
@@ -189,7 +185,6 @@ def compute_probability_intervals(
         cell_width=jax.device_put(partition.cell_width),
         boundary_lb=jax.device_put(partition.boundary_lb),
         boundary_ub=jax.device_put(partition.boundary_ub),
-        wrap=jax.device_put(wrap_np),
         lipschitz=jax.device_put(lipschitz_np),
         max_slice=jax.device_put(jnp.asarray(actions.max_slice, dtype=jnp.int32)),
     )
@@ -226,11 +221,6 @@ def compute_probability_intervals(
         prob_ub = cp_table_ub[counts_ub_np]
         p_abs_ub = cp_table_ub[abs_ub_np]
         p_abs_lb = np.zeros_like(p_abs_ub)
-
-        # Zero out lower bound for critical / unsafe regions
-        if np.any(critical_mask):
-            is_critical = critical_mask[succ_ids_np]
-            prob_lb = np.where(is_critical, 0.0, prob_lb)
 
         for i, s in enumerate(range(b_start, b_end)):
             s_int = int(s)
