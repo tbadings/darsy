@@ -53,3 +53,5 @@ _build/
 Thumbs.db
 ehthumbs.db
 desktop.ini
+plot_transition_interactive.py
+plot_transition.py

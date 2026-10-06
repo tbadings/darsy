@@ -33,11 +33,11 @@ class MountainCar(MountainCarDynamics):
         # Authority limit for the control u, both positive and negative
         self.uMin = [-1]
         self.uMax = [1]
-        self.num_actions = [9]
+        self.num_actions = [3]
 
         self.partition['boundary'] = np.array([[-1.2, -0.07], [0.6, 0.07]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([180, 280])
+        self.partition['number_per_dim'] = np.array([500, 500])
 
         self.goal = np.array([
             [[0.45, 0], [0.6, 0.07]]
