@@ -73,7 +73,9 @@ class RectangularForward:
         lower_bounds = partition.regions['lower_bounds']
         upper_bounds = partition.regions['upper_bounds']
 
-        master_rng = jax.random.PRNGKey(args.seed)
+        # Distinct stream from the probability-interval computation: the FRS must be independent of the
+        # samples later used for the PAC counts, otherwise the window is fitted to those very samples.
+        master_rng = jax.random.fold_in(jax.random.PRNGKey(args.seed), 1)
         starts, ends = create_batches(num_regions, args.frs_batch_size)
 
         for batch_start, batch_end in tqdm(zip(starts, ends), total=len(starts)):
