@@ -1,11 +1,4 @@
-"""
-Computation of transition probability intervals for Interval Markov Decision Processes (IMDPs).
-
-Given a partitioned continuous state space and forward reachable sets (FRS), this module
-generates empirical transition samples, inflates them via the system's Lipschitz matrix,
-counts containment and intersection against FRS successor boxes, and constructs
-Probably Approximately Correct (PAC) intervals via Clopper-Pearson bounds.
-"""
+"""PAC transition probability intervals for IMDPs."""
 
 import logging
 import time
@@ -23,21 +16,60 @@ logger = logging.getLogger(__name__)
 
 
 def compute_cp_table(num_samples: int, beta: float) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Compute Clopper-Pearson confidence interval lookup table for binomial counts.
-
-    :param num_samples: Total number of samples N.
-    :param beta: Error probability / significance level (confidence level is 1 - beta).
-    :return: Tuple of (cp_table_lb, cp_table_ub) arrays of length num_samples + 1.
-    """
+    """Clopper-Pearson bounds for every count 0..num_samples."""
     k = np.arange(num_samples + 1)
-    cp_table_lb = np.zeros(num_samples + 1, dtype=np.float64)
-    cp_table_ub = np.ones(num_samples + 1, dtype=np.float64)
+    cp_table_lb = np.zeros(num_samples + 1, dtype=np.float64)  # count 0 -> lower 0
+    cp_table_ub = np.ones(num_samples + 1, dtype=np.float64)  # count N -> upper 1
 
+    # two-sided beta quantiles for the interior counts
     cp_table_lb[1:] = scipy.stats.beta.ppf(beta / 2.0, k[1:], num_samples - k[1:] + 1)
     cp_table_ub[:-1] = scipy.stats.beta.ppf(1.0 - beta / 2.0, k[:-1] + 1, num_samples - k[:-1])
 
     return cp_table_lb, cp_table_ub
+
+
+def _window_offsets(window_shape):
+    """Grid index offsets of all cells in a window, one row per cell."""
+    dim = len(window_shape)
+    return np.indices(window_shape).reshape(dim, -1).T  # row-major order
+
+
+def _to_interval_columns(prob_lb, prob_ub):
+    """Stack lower and upper bounds into (n, 2) interval pairs."""
+    return np.stack([prob_lb, prob_ub], axis=-1)  # last axis is [lb, ub]
+
+
+def _count_contained(box_lb, box_ub, ref_lb, ref_ub):
+    """Per-reference-box count of sample boxes fully inside it."""
+    # broadcast samples against reference boxes
+    inside = jnp.all(
+        (box_lb[:, None, :] >= ref_lb[None, :, :]) & (box_ub[:, None, :] <= ref_ub[None, :, :]),
+        axis=-1,
+    )
+    return jnp.sum(inside, axis=0)  # one count per reference box
+
+
+def _count_intersecting(box_lb, box_ub, ref_lb, ref_ub):
+    """Per-reference-box count of sample boxes overlapping it."""
+    # broadcast samples against reference boxes
+    overlaps = jnp.all(
+        (box_lb[:, None, :] <= ref_ub[None, :, :]) & (box_ub[:, None, :] >= ref_lb[None, :, :]),
+        axis=-1,
+    )
+    return jnp.sum(overlaps, axis=0)  # one count per reference box
+
+
+def _cells_in_grid(coords, grid_shape):
+    """Mask of cells whose coords lie inside the grid."""
+    in_bounds_dim = (coords >= 0) & (coords < grid_shape)  # per dim
+    return jnp.all(in_bounds_dim, axis=-1)  # all dims in bounds
+
+
+def _linear_ids(coords, strides, num_cells, valid):
+    """Row-major cell ids; invalid cells get id 0."""
+    clipped = jnp.clip(coords, 0, num_cells - 1)  # keep ids in range
+    ids = jnp.sum(clipped * strides, axis=-1).astype(jnp.int32)  # row-major id
+    return jnp.where(valid, ids, 0)  # invalid cells -> 0
 
 
 def _make_batch_kernel(
@@ -57,13 +89,13 @@ def _make_batch_kernel(
     coarse_shape: jnp.ndarray,
     factor: int,
 ):
-    """Create a JIT-compiled vmapped kernel to evaluate sample containment and intersections.
-
-    The coarse_* arguments describe the block window of the coarse layer.
-    """
+    """JIT-compiled vmapped kernel; coarse_* describe the coarse block window."""
 
     def single_action_counts(state_min, state_max, action, idx_lb, rng):
+        # two rng streams: one for states, one for noise
         rng_state, rng_noise = jax.random.split(rng)
+
+        # sample successor states
         states = jax.random.uniform(
             rng_state,
             shape=(num_samples, state_min.shape[0]),
@@ -73,89 +105,62 @@ def _make_batch_kernel(
         noise = noise_sample_fn(rng_noise, shape=(num_samples,))
         next_states = jax.vmap(step_fn, in_axes=(0, None, 0))(states, action, noise)
 
-        # Inflate next_states using max distance to state border and Lipschitz matrix
+        # inflate samples by Lipschitz * distance to the state border
         dist_to_border = jnp.maximum(states - state_min, state_max - states)
         inflation = jnp.dot(dist_to_border, lipschitz.T)
+        box_lb = next_states - inflation  # sample box, lower corner
+        box_ub = next_states + inflation  # sample box, upper corner
 
-        b_lb = next_states - inflation
-        b_ub = next_states + inflation
+        # fine successor cells of the FRS window
+        grid_coords = idx_lb + offsets  # one row per cell
+        cell_lb = grid_coords * cell_width + boundary_lb
+        cell_ub = cell_lb + cell_width
+        cell_valid = _cells_in_grid(grid_coords, number_per_dim)
 
-        # Successor grid cells from FRS slice
-        grid_coords = idx_lb + offsets
-        succ_lb = grid_coords * cell_width + boundary_lb
-        succ_ub = succ_lb + cell_width
+        # lower count = contained boxes, upper count = intersecting boxes
+        counts_lb = (_count_contained(box_lb, box_ub, cell_lb, cell_ub) * cell_valid).astype(jnp.int32)
+        counts_ub = (_count_intersecting(box_lb, box_ub, cell_lb, cell_ub) * cell_valid).astype(jnp.int32)
 
-        # In-bounds mask for successor cells
-        in_bounds_dim = (grid_coords >= 0) & (grid_coords < number_per_dim)
-        cell_valid = jnp.all(in_bounds_dim, axis=-1)
-
-        # Check containment and intersections against FRS cells
-        inside = jnp.all(
-            (b_lb[:, None, :] >= succ_lb[None, :, :]) & (b_ub[:, None, :] <= succ_ub[None, :, :]),
-            axis=-1,
-        )
-        intersects = jnp.all(
-            (b_lb[:, None, :] <= succ_ub[None, :, :]) & (b_ub[:, None, :] >= succ_lb[None, :, :]),
-            axis=-1,
-        )
-
-        counts_lb = (jnp.sum(inside, axis=0) * cell_valid).astype(jnp.int32)
-        counts_ub = (jnp.sum(intersects, axis=0) * cell_valid).astype(jnp.int32)
-
-        # Absorbing (unsafe) state counts:
-        # Continuous bounds of the FRS clipped to valid partition boundaries
+        # absorbing state: continuous FRS box, clipped to the partition
         frs_cont_lb = idx_lb * cell_width + boundary_lb
         frs_cont_ub = (idx_lb + max_slice) * cell_width + boundary_lb
         frs_valid_lb = jnp.maximum(frs_cont_lb, boundary_lb)
         frs_valid_ub = jnp.minimum(frs_cont_ub, boundary_ub)
 
-        # For unsafe/absorbing, lower bound is zero; only compute upper bound
-        count_abs_lb = jnp.int32(0)
+        # lower bound is 0 (built on the host); here only the upper count
+        # every sample box leaving the FRS adds one to the upper count
+        escapes_dim = (box_lb < frs_valid_lb) | (box_ub > frs_valid_ub)  # per dim
+        count_abs_ub = jnp.sum(jnp.any(escapes_dim, axis=-1)).astype(jnp.int32)
 
-        # All boxes that intersect with outside of the FRS count towards the upper bound of absorbing
-        not_inside_frs_dim = (b_lb < frs_valid_lb) | (b_ub > frs_valid_ub)
-        box_intersects_abs = jnp.any(not_inside_frs_dim, axis=-1)
-        count_abs_ub = jnp.sum(box_intersects_abs).astype(jnp.int32)
+        # fine successor ids
+        succ_ids = _linear_ids(grid_coords, strides, number_per_dim, cell_valid)
 
-        # Successor state IDs
-        clipped_grid = jnp.clip(grid_coords, 0, number_per_dim - 1)
-        succ_ids = jnp.sum(clipped_grid * strides, axis=-1).astype(jnp.int32)
-        succ_ids = jnp.where(cell_valid, succ_ids, 0)
+        # coarse blocks of the FRS window
+        block_coords = (idx_lb // factor) + coarse_offsets  # block grid coords
+        block_valid = _cells_in_grid(block_coords, coarse_shape)
 
-        # Coarse (block) layer, using the same sample boxes b_lb / b_ub.
-        c_coords = (idx_lb // factor) + coarse_offsets                    # [Mc, dim]
-        c_valid = jnp.all((c_coords >= 0) & (c_coords < coarse_shape), axis=-1)  # [Mc]
+        # block boxes from the fine index range
+        block_start = block_coords * factor  # first fine cell of the block
+        block_end = jnp.minimum(block_start + factor, number_per_dim)  # shorter at the edge
+        block_lb = boundary_lb + block_start * cell_width
+        block_ub = boundary_lb + block_end * cell_width
 
-        # Block boxes from the fine index range
-        c_fine_start = c_coords * factor
-        c_fine_end = jnp.minimum(c_fine_start + factor, number_per_dim)   # shorter at the edge
-        c_lb = boundary_lb + c_fine_start * cell_width
-        c_ub = boundary_lb + c_fine_end * cell_width
+        # clip blocks to the valid FRS box and drop empty ones
+        block_lb = jnp.maximum(block_lb, frs_valid_lb)
+        block_ub = jnp.minimum(block_ub, frs_valid_ub)
+        block_valid = block_valid & jnp.all(block_lb < block_ub, axis=-1)
 
-        c_lb = jnp.maximum(c_lb, frs_valid_lb)
-        c_ub = jnp.minimum(c_ub, frs_valid_ub)
-        c_nonempty = jnp.all(c_lb < c_ub, axis=-1)
-        c_valid = c_valid & c_nonempty
+        # out-of-grid blocks get garbage boxes, but block_valid zeroes their counts
+        coarse_counts_lb = (_count_contained(box_lb, box_ub, block_lb, block_ub) * block_valid).astype(jnp.int32)
+        coarse_counts_ub = (_count_intersecting(box_lb, box_ub, block_lb, block_ub) * block_valid).astype(jnp.int32)
 
-        c_inside = jnp.all(
-            (b_lb[:, None, :] >= c_lb[None, :, :]) & (b_ub[:, None, :] <= c_ub[None, :, :]),
-            axis=-1,
-        )
-        c_intersects = jnp.all(
-            (b_lb[:, None, :] <= c_ub[None, :, :]) & (b_ub[:, None, :] >= c_lb[None, :, :]),
-            axis=-1,
-        )
-
-        # For out-of-range coarse cells c_lb/c_ub are garbage, but c_valid zeroes their counts
-        c_counts_lb = (jnp.sum(c_inside, axis=0) * c_valid).astype(jnp.int32)
-        c_counts_ub = (jnp.sum(c_intersects, axis=0) * c_valid).astype(jnp.int32)
-
-        c_ids = jnp.sum(jnp.clip(c_coords, 0, coarse_shape - 1) * coarse_strides, axis=-1).astype(jnp.int32)
-        c_ids = jnp.where(c_valid, c_ids, 0)
+        # coarse successor ids
+        coarse_ids = _linear_ids(block_coords, coarse_strides, coarse_shape, block_valid)
 
         return (counts_lb, counts_ub, succ_ids, cell_valid, count_abs_ub,
-                c_counts_lb, c_counts_ub, c_ids, c_valid)
+                coarse_counts_lb, coarse_counts_ub, coarse_ids, block_valid)
 
+    # batched over states and then over actions
     return jax.jit(jax.vmap(
         jax.vmap(single_action_counts, in_axes=(None, None, 0, 0, 0)),
         in_axes=(0, 0, 0, 0, 0),
@@ -171,63 +176,55 @@ def compute_probability_intervals(
     debug_state: int | None = None,
 ) -> tuple[dict[int, np.ndarray], dict[int, np.ndarray], dict[int, np.ndarray], dict[int, np.ndarray],
           dict[int, np.ndarray], dict[int, np.ndarray]]:
-    """
-    Compute transition probability intervals for an IMDP abstraction using data-driven sampling,
-    Lipschitz-based inflation, and Clopper-Pearson confidence intervals.
-
-    :param args: Argument namespace.
-    :param model: Benchmark dynamical model.
-    :param partition: State space partition.
-    :param actions: RectangularForward reachability object with FRS indices.
-    :param coarse_partition: CoarsePartition
-    :param debug_state: Optional initial/debug state index for logging.
-    :return: Tuple of (P_full, S_id, A_id, P_absorbing, Q_id, P_coarse).
-    """
+    """Transition probability intervals via sampling and Clopper-Pearson bounds."""
     logger.info('=== Start transition probability intervals computation ===')
     t_start = time.time()
 
+    # problem sizes
     num_regions = len(partition.regions['lower_bounds'])
     num_actions = partition.regions['actions'].shape[1]
-    dim = partition.dimension
 
+    # sampling and confidence settings
     num_samples = args.num_samples
     pac_beta = args.pac_beta
     float_dtype = args.floatprecision
     batch_size = args.batch_size
 
-    # 1. Precompute Clopper-Pearson lookup table
+    # count -> probability lookup table
     cp_table_lb, cp_table_ub = compute_cp_table(num_samples, pac_beta)
 
-    # Grid offsets for each cell in the FRS slice
-    offsets_np = np.indices(actions.max_slice).reshape(dim, -1).T
+    # fine layer offsets and strides
+    offsets_np = _window_offsets(actions.max_slice)
     strides_np = _compute_linear_strides(partition.number_per_dim)
     lipschitz_np = np.asarray(np.atleast_2d(model.lipschitz), dtype=np.float32)
 
-    # Coarse layer statics
+    # coarse layer offsets and strides
     coarse_factor = coarse_partition.factor
-    if actions.coarse_factor != coarse_factor:
+    if actions.coarse_factor != coarse_factor:  # layers must match
         raise ValueError(
             f'Coarse factor mismatch: actions built with {actions.coarse_factor}, '
             f'coarse partition built with {coarse_factor}.'
         )
-    coarse_offsets_np = np.indices(actions.max_slice_coarse).reshape(dim, -1).T
+    coarse_offsets_np = _window_offsets(actions.max_slice_coarse)
     coarse_strides_np = np.asarray(coarse_partition.coarse_strides)
     coarse_shape_np = np.asarray(coarse_partition.coarse_shape)
 
-    P_full: dict[int, np.ndarray] = {}
-    S_id: dict[int, np.ndarray] = {}
-    A_id: dict[int, np.ndarray] = {}
-    P_absorbing: dict[int, np.ndarray] = {}
-    Q_id: dict[int, np.ndarray] = {}
-    P_coarse: dict[int, np.ndarray] = {}
+    # outputs, keyed by region id
+    P_full: dict[int, np.ndarray] = {}  # fine intervals
+    S_id: dict[int, np.ndarray] = {}  # fine successor ids
+    A_id: dict[int, np.ndarray] = {}  # enabled action ids
+    P_absorbing: dict[int, np.ndarray] = {}  # absorbing intervals
+    Q_id: dict[int, np.ndarray] = {}  # coarse successor ids
+    P_coarse: dict[int, np.ndarray] = {}  # coarse intervals
 
-    action_ids = np.arange(num_actions, dtype=np.int32)
-    actions_slice = partition.regions['actions']
+    action_ids = np.arange(num_actions, dtype=np.int32)  # all actions enabled
+    actions_slice = partition.regions['actions']  # shared over regions
     lower_bounds = partition.regions['lower_bounds']
     upper_bounds = partition.regions['upper_bounds']
 
-    master_rng = jax.random.PRNGKey(args.seed)
+    master_rng = jax.random.PRNGKey(args.seed)  # one stream over all batches
 
+    # jitted (states x actions) counting kernel
     batch_kernel = _make_batch_kernel(
         step_fn=model.step,
         noise_sample_fn=model.noise.sample_jax,
@@ -246,55 +243,49 @@ def compute_probability_intervals(
         factor=coarse_factor,
     )
 
+    # one pass over the regions in batches
     starts, ends = create_batches(num_regions, batch_size)
     pbar = tqdm(zip(starts, ends), total=len(starts), desc="Probability intervals")
 
     for b_start, b_end in pbar:
         cur_batch_size = b_end - b_start
 
+        # batch slices; the actions are shared and get broadcast
         lb_batch = lower_bounds[b_start:b_end]
         ub_batch = upper_bounds[b_start:b_end]
         frs_lb_batch = actions.frs_idx_lb[b_start:b_end]
-
         act_batch = jnp.broadcast_to(actions_slice, (cur_batch_size, *actions_slice.shape[1:]))
 
+        # fresh rng key per (state, action) of the batch
         master_rng, subkey = jax.random.split(master_rng)
         rngs = jax.random.split(subkey, cur_batch_size * num_actions).reshape(cur_batch_size, num_actions, 2)
 
-        (res_lb, res_ub, res_succ, res_valid, res_abs_ub,
-         res_c_lb, res_c_ub, res_c_ids, res_c_valid) = batch_kernel(
-            lb_batch,
-            ub_batch,
-            act_batch,
-            frs_lb_batch,
-            rngs,
-        )
+        # run the kernel and move results to host
+        results = jax.device_get(batch_kernel(lb_batch, ub_batch, act_batch, frs_lb_batch, rngs))
+        (counts_lb, counts_ub, succ_ids, cell_valid, count_abs_ub,
+         coarse_counts_lb, coarse_counts_ub, coarse_ids, coarse_valid) = results
 
-        (counts_lb_np, counts_ub_np, succ_ids_np, valid_np, abs_ub_np,
-         c_counts_lb_np, c_counts_ub_np, c_ids_np, c_valid_np) = jax.device_get(
-            (res_lb, res_ub, res_succ, res_valid, res_abs_ub,
-             res_c_lb, res_c_ub, res_c_ids, res_c_valid)
-        )
-
-        # Look up probability intervals from Clopper-Pearson table for valid grid-aligned cells
-        prob_lb = np.where(valid_np, cp_table_lb[counts_lb_np], 0.0)
-        prob_ub = np.where(valid_np, cp_table_ub[counts_ub_np], 0.0)
-        p_abs_ub = cp_table_ub[abs_ub_np]
+        # counts -> probability intervals; invalid cells stay 0
+        prob_lb = np.where(cell_valid, cp_table_lb[counts_lb], 0.0)
+        prob_ub = np.where(cell_valid, cp_table_ub[counts_ub], 0.0)
+        # absorbing interval: lower bound 0, upper from the count
+        p_abs_ub = cp_table_ub[count_abs_ub]
         p_abs_lb = np.zeros_like(p_abs_ub)
+        # same lookup for the coarse blocks
+        c_prob_lb = np.where(coarse_valid, cp_table_lb[coarse_counts_lb], 0.0)
+        c_prob_ub = np.where(coarse_valid, cp_table_ub[coarse_counts_ub], 0.0)
 
-        # Same Clopper-Pearson table, applied to the directly counted block counts
-        c_prob_lb = np.where(c_valid_np, cp_table_lb[c_counts_lb_np], 0.0)
-        c_prob_ub = np.where(c_valid_np, cp_table_ub[c_counts_ub_np], 0.0)
-
+        # store one entry per region
         for i, s in enumerate(range(b_start, b_end)):
             s_int = int(s)
-            S_id[s_int] = succ_ids_np[i].astype(np.int32)
-            A_id[s_int] = action_ids
-            P_full[s_int] = np.stack([prob_lb[i], prob_ub[i]], axis=-1).astype(float_dtype)
-            P_absorbing[s_int] = np.stack([p_abs_lb[i], p_abs_ub[i]], axis=-1).astype(float_dtype)
-            Q_id[s_int] = c_ids_np[i].astype(np.int32)
-            P_coarse[s_int] = np.stack([c_prob_lb[i], c_prob_ub[i]], axis=-1).astype(float_dtype)
+            S_id[s_int] = succ_ids[i].astype(np.int32)  # fine successors
+            A_id[s_int] = action_ids  # all actions enabled
+            P_full[s_int] = _to_interval_columns(prob_lb[i], prob_ub[i]).astype(float_dtype)
+            P_absorbing[s_int] = _to_interval_columns(p_abs_lb[i], p_abs_ub[i]).astype(float_dtype)
+            Q_id[s_int] = coarse_ids[i].astype(np.int32)  # coarse successors
+            P_coarse[s_int] = _to_interval_columns(c_prob_lb[i], c_prob_ub[i]).astype(float_dtype)
 
+    # debug output for one region
     if debug_state is not None and debug_state in P_full:
         logger.info(f'- Debug state {debug_state}:')
         logger.info(f'  Enabled actions: {A_id[debug_state]}')
