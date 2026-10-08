@@ -356,3 +356,31 @@ class SparsePartition(_HyperrectangularPartition):
             )
             actions[i] = a
         return centers_unit, jnp.array(actions, dtype=float)
+
+
+class CoarsePartition:
+    def __init__(self, partition, factor):
+        self.factor = int(factor)
+
+        # Fine grid geometry
+        self.fine_shape = np.asarray(partition.number_per_dim, dtype=np.int64)
+
+        # Coarse grid
+        self.coarse_shape = (self.fine_shape + self.factor - 1) // self.factor
+        self.coarse_strides = _compute_linear_strides(self.coarse_shape)
+
+        # parents: fine state id -> coarse cell id (blocks tile the grid, so every fine cell has one)
+        fine_idx = np.asarray(partition.state_id2idx, dtype=np.int64)
+        coarse_idx = fine_idx // self.factor
+        self.parents = (coarse_idx * self.coarse_strides).sum(axis=1).astype(np.int32)
+
+        # children: coarse cell id -> fine state ids (ascending, possibly empty)
+        num_coarse = int(np.prod(self.coarse_shape))
+        order = np.argsort(self.parents, kind='stable')
+        splits = np.cumsum(np.bincount(self.parents, minlength=num_coarse))[:-1]
+        self.children = [seg.astype(np.int32) for seg in np.split(order, splits)]
+
+        logger.info(
+            f"- Coarse partition: {'x'.join(str(n) for n in self.coarse_shape)} blocks (factor {self.factor}) "
+            f"over fine grid {'x'.join(str(n) for n in self.fine_shape)}"
+        )

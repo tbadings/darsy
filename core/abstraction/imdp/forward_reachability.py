@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def _make_forward_reach(step_fn, noise_sample_fn, num_samples, alpha,
-                        number_per_dim, cell_width, boundary_lb, boundary_ub, lipschitz):
+                        number_per_dim, boundary_lb, boundary_ub, lipschitz):
     pct_lo = 100 * alpha / 2
     pct_hi = 100 * (1 - alpha / 2)
     norm_scale = number_per_dim / (boundary_ub - boundary_lb)
@@ -44,7 +44,7 @@ def _make_forward_reach(step_fn, noise_sample_fn, num_samples, alpha,
     ))
 
 class RectangularForward:
-    def __init__(self, args, partition, model):
+    def __init__(self, args, partition, model, coarse_factor):
         logger.info('=== Start forward reachability computations ===')
         t_total = time.time()
 
@@ -56,7 +56,6 @@ class RectangularForward:
             args.num_samples,
             args.alpha,
             jax.device_put(partition.number_per_dim),
-            jax.device_put(partition.cell_width),
             jax.device_put(partition.boundary_lb),
             jax.device_put(partition.boundary_ub),
             jax.device_put(lipschitz_np),
@@ -65,6 +64,9 @@ class RectangularForward:
         num_regions = len(partition.regions['lower_bounds'])
         num_actions = partition.regions['actions'].shape[1]
         dim = partition.dimension
+        self.coarse_factor = int(coarse_factor)
+        factor = self.coarse_factor
+        fine_shape = np.asarray(partition.number_per_dim)
 
         self.frs_idx_lb = np.zeros((num_regions, num_actions, dim), dtype=np.int16)
         max_span = np.zeros(dim, dtype=int)
@@ -93,12 +95,17 @@ class RectangularForward:
             )
 
             idx_lb_np, span_np = jax.device_get((batch_idx_lb, batch_span))
-            self.frs_idx_lb[batch_start:batch_end] = idx_lb_np
-            np.maximum(max_span, np.max(span_np, axis=(0, 1)), out=max_span)
+            start = idx_lb_np.astype(np.int64)
+            stop = start + span_np
+            start = start // factor * factor
+            stop = np.minimum((stop + factor - 1) // factor * factor, fine_shape)
+
+            self.frs_idx_lb[batch_start:batch_end] = start
+            np.maximum(max_span, np.max(stop - start, axis=(0, 1)), out=max_span)
 
         self.max_slice = tuple(max_span.tolist())
-        self.id = np.arange(num_actions)
+        self.max_slice_coarse = tuple(int(np.ceil(span / factor)) for span in self.max_slice)
 
         logger.info(f'- Max state-slice to compute probability intervals over: {self.max_slice}')
+        logger.info(f'- Max coarse block-slice (factor {factor}): {self.max_slice_coarse}')
         logger.info(f'- Forward reachable sets computed (took {(time.time() - t_total):.3f} sec.)')
-        logger.info(f'Reachability computations took {(time.time() - t_total):.3f} sec.')

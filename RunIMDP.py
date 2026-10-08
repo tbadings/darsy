@@ -9,6 +9,7 @@ from core.abstraction.imdp.imdp import IMDP
 from core.abstraction.imdp.probability_intervals import compute_probability_intervals
 from core.abstraction.imdp.rvi_jax import RVI_JAX
 from core.abstraction.imdp.rvi_storm import RVI_STORM
+from core.abstraction.partition import CoarsePartition
 from core.options import parse_arguments
 from core.pipeline import configure_run, extract_policy_inputs, finish, prepare_abstraction, report
 
@@ -26,16 +27,21 @@ def build_imdp(args, model, partition, s_init):
     :return: IMDP abstraction.
     '''
 
+    coarse_factor = args.coarse_factor
+
     # Create actions based on forward reachable sets
-    actions = RectangularForward(args=args, partition=partition, model=model)
+    actions = RectangularForward(args=args, partition=partition, model=model, coarse_factor=coarse_factor)
+
+    # Coarse partition grouping fine cells into blocks
+    coarse_partition = CoarsePartition(partition, coarse_factor)
 
     # Transition probability intervals for every state-action pair.
-    P_full, S_id, A_id, P_absorbing = compute_probability_intervals(
+    P_full, S_id, A_id, P_absorbing, Q_id, P_coarse = compute_probability_intervals(
         args=args,
         model=model,
         partition=partition,
         actions=actions,
-        vectorized=True,
+        coarse_partition=coarse_partition,
         debug_state=s_init,
     )
 
@@ -49,6 +55,9 @@ def build_imdp(args, model, partition, s_init):
         S_id=S_id,
         A_id=A_id,
         P_absorbing=P_absorbing,
+        coarse_partition=coarse_partition,
+        Q_id=Q_id,
+        P_coarse=P_coarse,
     )
 
 

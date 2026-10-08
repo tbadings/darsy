@@ -74,6 +74,7 @@ def parse_arguments(argv=None):
     parser.add_argument('--pac_beta', type=_probability, default=0.005,
                         help="Confidence level for Clopper-Pearson PAC bounds on transition "
                              "probability intervals. Smaller values give wider, more conservative intervals.")
+    parser.add_argument('--coarse_factor', type=_positive_int, default=2)
 
     parser.add_argument('--log-level', type=str, default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                         help='Logging verbosity level')
