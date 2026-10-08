@@ -66,7 +66,7 @@ def parse_arguments(argv=None):
                         help="For computing the transition probability intervals, the number of states to process in a vectorized fashion (Warning: increasing this too much drastically increases memory usage for JIT compilation by JAX!)")
     parser.add_argument('--frs_batch_size', type=_positive_int, default=100,
                         help="Number of state regions to process per batch when computing forward reachable sets. Larger values reduce Python-JAX round trips but increase peak memory usage.")
-    parser.add_argument('--num_samples', type=_positive_int, default=1000,
+    parser.add_argument('--num_samples', type=_positive_int, default=5000,
                         help="Number of samples per (cell, action) pair for data-driven forward reachable set computation.")
     parser.add_argument('--alpha', type=_probability, default=0.00,
                         help="Coverage level for the FRS percentile interval. The FRS is the "
@@ -74,7 +74,7 @@ def parse_arguments(argv=None):
     parser.add_argument('--pac_beta', type=_probability, default=0.005,
                         help="Confidence level for Clopper-Pearson PAC bounds on transition "
                              "probability intervals. Smaller values give wider, more conservative intervals.")
-    parser.add_argument('--coarse_factor', type=_positive_int, default=2)
+    parser.add_argument('--coarse_factor', type=_positive_int, default=4)
 
     parser.add_argument('--log-level', type=str, default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                         help='Logging verbosity level')

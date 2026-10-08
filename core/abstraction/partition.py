@@ -371,14 +371,13 @@ class CoarsePartition:
 
         # parents: fine state id -> coarse cell id (blocks tile the grid, so every fine cell has one)
         fine_idx = np.asarray(partition.state_id2idx, dtype=np.int64)
-        coarse_idx = fine_idx // self.factor
-        self.parents = (coarse_idx * self.coarse_strides).sum(axis=1).astype(np.int32)
+        self.parents = ((fine_idx // self.factor) @ self.coarse_strides).astype(np.int32)
 
         # children: coarse cell id -> fine state ids (ascending, possibly empty)
         num_coarse = int(np.prod(self.coarse_shape))
-        order = np.argsort(self.parents, kind='stable')
-        splits = np.cumsum(np.bincount(self.parents, minlength=num_coarse))[:-1]
-        self.children = [seg.astype(np.int32) for seg in np.split(order, splits)]
+        order = np.argsort(self.parents, kind='stable').astype(np.int32)
+        splits = np.searchsorted(self.parents[order], np.arange(1, num_coarse))
+        self.children = np.split(order, splits)
 
         logger.info(
             f"- Coarse partition: {'x'.join(str(n) for n in self.coarse_shape)} blocks (factor {self.factor}) "
