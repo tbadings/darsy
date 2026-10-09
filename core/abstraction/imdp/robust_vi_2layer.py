@@ -320,6 +320,83 @@ def preprocess_2layer_solution(
     }
 
 
+def preprocess_2imdp(imdp, states, max_actions):
+    """Build solver arrays directly from the rectangular abstraction.
+
+    Zero/zero entries are unused window slots. The absorbing successor is
+    appended explicitly and has no coarse parent.
+    """
+    states = np.asarray(states, dtype=np.int32)
+    parents = np.asarray(imdp.parents, dtype=np.int32)
+    records = {}
+    max_s = max_q = max_c = 0
+    action_mask = np.zeros((len(states), max_actions), dtype=bool)
+    for si, s in enumerate(states):
+        actions = imdp.A_id.get(int(s), [])
+        if len(actions) > max_actions:
+            raise ValueError(f"State {s} has too many actions")
+        action_mask[si, :len(actions)] = True
+        for a in range(len(actions)):
+            fine = np.asarray(imdp.P_full[int(s)][a])
+            ids = np.asarray(imdp.S_id[int(s)][a], dtype=np.int32)
+            valid = np.any(fine > 0, axis=1)
+            ids, fine = ids[valid], fine[valid]
+            if len(np.unique(ids)) != len(ids):
+                raise ValueError(f"Duplicate fine successors at ({s}, {a})")
+            ids = np.append(ids, int(imdp.absorbing_state)).astype(np.int32)
+            fine = np.vstack((fine, np.asarray(imdp.P_absorbing[int(s)][a])))
+            coarse = np.asarray(imdp.P_coarse[int(s)][a])
+            qids = np.asarray(imdp.Q_id[int(s)][a], dtype=np.int32)
+            qvalid = np.any(coarse > 0, axis=1)
+            qids, coarse = qids[qvalid], coarse[qvalid]
+            if len(np.unique(qids)) != len(qids):
+                raise ValueError(f"Duplicate coarse successors at ({s}, {a})")
+            lookup = {int(q): j for j, q in enumerate(qids)}
+            cluster_idx = np.array([lookup.get(int(parents[sp]), -1)
+                                    if sp < len(parents) else -1 for sp in ids], dtype=np.int32)
+            children = [np.flatnonzero(cluster_idx == j).astype(np.int32)
+                        for j in range(len(qids))]
+            records[si, a] = ids, fine, qids, coarse, cluster_idx, children
+            max_s = max(max_s, len(ids))
+            max_q = max(max_q, len(qids))
+            max_c = max(max_c, *(map(len, children)), 0)
+
+    shape_s = (len(states), max_actions, max_s)
+    shape_q = (len(states), max_actions, max_q)
+    shape_c = (len(states), max_actions, max_q, max_c)
+    result = dict(
+        states=states, action_mask=action_mask,
+        successors=np.full(shape_s, -1, dtype=np.int32),
+        successors_mask=np.zeros(shape_s, dtype=bool),
+        prob_lb=np.zeros(shape_s, dtype=np.float32),
+        prob_ub=np.zeros(shape_s, dtype=np.float32),
+        coarse_constraint_idx=np.full(shape_s, -1, dtype=np.int32),
+        coarse_states=np.full(shape_q, -1, dtype=np.int32),
+        coarse_mask=np.zeros(shape_q, dtype=bool),
+        prob_lb_coarse=np.zeros(shape_q, dtype=np.float32),
+        prob_ub_coarse=np.zeros(shape_q, dtype=np.float32),
+        children_indices=np.full(shape_c, -1, dtype=np.int32),
+        children_mask=np.zeros(shape_c, dtype=bool),
+        n_states=len(states), max_actions=max_actions,
+        max_successors=max_s, max_coarse=max_q, max_children=max_c,
+    )
+    for (si, a), (ids, fine, qids, coarse, cluster_idx, children) in records.items():
+        n, m = len(ids), len(qids)
+        result['successors'][si, a, :n] = ids
+        result['successors_mask'][si, a, :n] = True
+        result['prob_lb'][si, a, :n] = fine[:, 0]
+        result['prob_ub'][si, a, :n] = fine[:, 1]
+        result['coarse_constraint_idx'][si, a, :n] = cluster_idx
+        result['coarse_states'][si, a, :m] = qids
+        result['coarse_mask'][si, a, :m] = True
+        result['prob_lb_coarse'][si, a, :m] = coarse[:, 0]
+        result['prob_ub_coarse'][si, a, :m] = coarse[:, 1]
+        for q, child in enumerate(children):
+            result['children_indices'][si, a, q, :len(child)] = child
+            result['children_mask'][si, a, q, :len(child)] = True
+    return result
+
+
 # ============================================================================
 # SORTING
 # ============================================================================
@@ -1137,6 +1214,8 @@ def robust_max_reach_probability_2layer_jax(
     initial_condition: Any,
     solution: Any,
     solver_opts: Any,
+    *,
+    data_prep: Dict[str, Any] | None = None,
 ):
     """
     Run robust lower and upper value iteration for the 2I-MDP.
@@ -1154,16 +1233,13 @@ def robust_max_reach_probability_2layer_jax(
         dtype=np.int32,
     )
 
-    max_actions = max(
-        len(solution.A_id[int(s)])
-        for s in states
-    )
-
-    data_prep = preprocess_2layer_solution(
-        solution=solution,
-        states=states,
-        max_actions=max_actions,
-    )
+    if data_prep is None:
+        if solution is None:
+            raise ValueError("Provide either solution or preprocessed data_prep")
+        max_actions = max((len(solution.A_id[int(s)]) for s in states), default=0)
+        data_prep = preprocess_2layer_solution(solution, states, max_actions)
+    elif not np.array_equal(data_prep['states'], states):
+        raise ValueError("data_prep states must match S_not_terminal")
 
     V_lower = np.asarray(
         initial_condition.V_lower,

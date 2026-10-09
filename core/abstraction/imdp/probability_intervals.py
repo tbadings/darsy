@@ -177,6 +177,7 @@ def compute_probability_intervals(
 ) -> tuple[dict[int, np.ndarray], dict[int, np.ndarray], dict[int, np.ndarray], dict[int, np.ndarray],
           dict[int, np.ndarray], dict[int, np.ndarray]]:
     """Transition probability intervals via sampling and Clopper-Pearson bounds."""
+    print("Number of samples: ", args.num_samples)
     logger.info('=== Start transition probability intervals computation ===')
     t_start = time.time()
 
