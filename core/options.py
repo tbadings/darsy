@@ -68,13 +68,16 @@ def parse_arguments(argv=None):
                         help="Number of state regions to process per batch when computing forward reachable sets. Larger values reduce Python-JAX round trips but increase peak memory usage.")
     parser.add_argument('--num_samples', type=_positive_int, default=5000,
                         help="Number of samples per (cell, action) pair for data-driven forward reachable set computation.")
+    parser.add_argument('--frs_num_samples', type=_positive_int, default=500,
+                        help="Number of samples per state-action for the forward reachable set.")
     parser.add_argument('--alpha', type=_probability, default=0.00,
                         help="Coverage level for the FRS percentile interval. The FRS is the "
                              "[alpha/2, 100-alpha/2] percentile envelope of sampled next states.")
-    parser.add_argument('--pac_beta', type=_probability, default=0.005,
+    parser.add_argument('--pac_beta', type=_probability, default=0.05,
                         help="Confidence level for Clopper-Pearson PAC bounds on transition "
                              "probability intervals. Smaller values give wider, more conservative intervals.")
-    parser.add_argument('--coarse_factor', type=_positive_int, default=1)
+    parser.add_argument('--coarse_factor', type=_positive_int, default=3,
+                        help="Factor for blocks in 2I-MDP.")
 
     parser.add_argument('--log-level', type=str, default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                         help='Logging verbosity level')

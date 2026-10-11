@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 def build_2imdp(args, model, partition, s_init):
     """Reuse the shared fine/coarse interval abstraction built by RunIMDP."""
-    return build_imdp(args, model, partition, s_init)
+    return build_imdp(args, model, partition, s_init, coarse_factor=args.coarse_factor, use_coarse=True)
 
 
 def solve_2imdp(args, imdp, s0):

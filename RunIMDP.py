@@ -16,7 +16,7 @@ from core.pipeline import configure_run, extract_policy_inputs, finish, prepare_
 logger = logging.getLogger(__name__)
 
 
-def build_imdp(args, model, partition, s_init):
+def build_imdp(args, model, partition, s_init, coarse_factor=1, use_coarse=False):
     '''
     Build the IMDP abstraction of the given model.
 
@@ -24,10 +24,10 @@ def build_imdp(args, model, partition, s_init):
     :param model: Benchmark model.
     :param partition: Partition of the continuous state space.
     :param s_init: State index of the initial continuous state (used for debug output).
+    :param coarse_factor: default is 1 to not affect standard IMDP.
+    :param use_coarse: True to compute the second layer (2IMDP).
     :return: IMDP abstraction.
     '''
-
-    coarse_factor = args.coarse_factor
 
     # Create actions based on forward reachable sets
     actions = RectangularForward(args=args, partition=partition, model=model, coarse_factor=coarse_factor)
@@ -43,6 +43,7 @@ def build_imdp(args, model, partition, s_init):
         actions=actions,
         coarse_partition=coarse_partition,
         debug_state=s_init,
+        use_coarse=use_coarse,
     )
 
     return IMDP(
@@ -89,6 +90,7 @@ def solve_imdp(args, imdp, s0):
 
 if __name__ == '__main__':
     args = parse_arguments()
+    args.coarse_factor = 1
     stamp = configure_run(args)
 
     model, partition, imdp = prepare_abstraction(args, stamp, 'IMDP', build_imdp)
