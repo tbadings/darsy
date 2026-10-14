@@ -396,7 +396,7 @@ class Test1DDynamics:
         self.n = 1
         self.p = 1
         self.state_variables = ['position']
-        self.wrap = jnp.array([True], dtype=bool)
+        self.wrap = jnp.array([False], dtype=bool)
 
         # State transition matrix
         self.A  = np.array([[1]])

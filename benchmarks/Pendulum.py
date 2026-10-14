@@ -29,11 +29,11 @@ class Pendulum(PendulumDynamics):
         # Authority limit for the control u, both positive and negative
         self.uMin = [-2]
         self.uMax = [2]
-        self.num_actions = [7]
+        self.num_actions = [3]
 
         self.partition['boundary'] = np.array([[-np.pi, -8], [np.pi, 8]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = 0.5 * np.array([200, 100])
+        self.partition['number_per_dim'] = np.array([200, 200])
 
         self.goal = np.array([
             [[-0.1*np.pi, -1], [0.1*np.pi, 1]]

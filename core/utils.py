@@ -1,5 +1,6 @@
 import logging
 
+import jax.numpy as jnp
 import numpy as np
 
 
@@ -53,6 +54,11 @@ def create_batches(data_length, batch_size):
     ends = (np.minimum(starts + batch_size, data_length)).astype(int)
 
     return starts, ends
+
+
+def wrap_diff(diff, period, wrap):
+    wrapped = jnp.mod(diff + period / 2, period) - period / 2
+    return jnp.where(wrap, wrapped, diff)
 
 
 def cm2inch(*tupl):
