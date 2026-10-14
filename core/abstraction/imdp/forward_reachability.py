@@ -1,5 +1,3 @@
-"""Forward reachable slices (FRS) per (cell, action), snapped to coarse block borders."""
-
 import logging
 import time
 
@@ -77,32 +75,46 @@ def _make_forward_reach(step_fn, noise_sample_fn, num_samples, alpha, partition,
     return jax.jit(jax.vmap(per_action, in_axes=(0, 0, 0, 0)))
 
 
-def _snap_window_to_blocks(idx_lb, span, factor, fine_shape, wrap):
-    """Grow index windows out to coarse block borders."""
-    start = idx_lb.astype(np.int64)  # window start per (cell, action)
-    stop = start + span  # raw window end (exclusive); past the grid end only on wrapped dims
-    start = start // factor * factor  # move start down to a block border
+def _put_frs_to_blocks(idx_lb, span, factor, number_per_dim):
+    start = idx_lb.astype(np.int64)
+    last = start + span - 1
+    start = start // factor * factor
 
-    # on wrapped dims, the part past the grid end is a second lap starting at index 0
-    laps = np.where(wrap, (stop - 1) // fine_shape, 0)
-    local_stop = stop - laps * fine_shape
-    local_stop = (local_stop + factor - 1) // factor * factor  # move end up to a block border
-    local_stop = np.minimum(local_stop, fine_shape)  # clip at the grid end
-    stop = laps * fine_shape + local_stop
+    local_last = last % number_per_dim
+    block_end = np.minimum((local_last // factor + 1) * factor, number_per_dim)
+    stop = last - local_last + block_end
 
-    stop = np.minimum(stop, start + fine_shape)  # at most one full lap
+    stop = np.minimum(stop, start + number_per_dim)
     return start, stop
 
 
+def _count_blocks(start, width, factor, size, wrap):
+    cells = start + np.arange(width)
+    if wrap:
+        cells = cells % size
+    else:
+        cells = cells[cells < size]
+    return len(np.unique(cells // factor))
+
+
+def _max_blocks_per_dim(frs_idx_lb, max_slice, factor, number_per_dim, wrap):
+    max_blocks = []
+    for d in range(len(max_slice)):
+        most = 0
+        for start in np.unique(frs_idx_lb[..., d]):
+            blocks = _count_blocks(int(start), max_slice[d], factor, int(number_per_dim[d]), wrap[d])
+            most = max(most, blocks)
+        max_blocks.append(most)
+    return tuple(max_blocks)
+
 class RectangularForward:
-    """FRS slice (start index + width) for every (cell, action), snapped to coarse block borders."""
+    """FRS slice (start index + width) for every (cell, action)"""
 
     def __init__(self, args, partition, model, coarse_factor):
         logger.info('=== Start forward reachability computations ===')
         t_start = time.time()
 
-        self.coarse_factor = int(coarse_factor)  # block edge, in fine cells
-        fine_shape = np.asarray(partition.number_per_dim)
+        self.coarse_factor = int(coarse_factor)
 
         lipschitz = jnp.asarray(np.atleast_2d(model.lipschitz), dtype=jnp.float32)
         batch_frs = _make_forward_reach(model.step, model.noise.sample_jax,
@@ -133,15 +145,14 @@ class RectangularForward:
             )
             idx_lb, span = jax.device_get((idx_lb, span))
 
-            # snap raw windows out to coarse block borders
-            window_start, window_stop = _snap_window_to_blocks(idx_lb, span, self.coarse_factor,
-                                                               fine_shape, partition.wrap)
+            frs_start, frs_stop = _put_frs_to_blocks(idx_lb, span, self.coarse_factor, partition.number_per_dim)
 
-            self.frs_idx_lb[start:end] = window_start
-            np.maximum(max_span, np.max(window_stop - window_start, axis=(0, 1)), out=max_span)
+            self.frs_idx_lb[start:end] = frs_start
+            np.maximum(max_span, np.max(frs_stop - frs_start, axis=(0, 1)), out=max_span)
 
-        self.max_slice = tuple(max_span.tolist())  # widest slice per dimension
-        self.max_slice_coarse = tuple(int(np.ceil(m / self.coarse_factor)) for m in self.max_slice)
+        self.max_slice = tuple(max_span.tolist())
+        self.max_slice_coarse = _max_blocks_per_dim(self.frs_idx_lb, self.max_slice, self.coarse_factor,
+                                                    partition.number_per_dim, partition.wrap)
 
         logger.info(f'- Max state-slice to compute probability intervals over: {self.max_slice}')
         logger.info(f'- Max coarse block-slice (factor {self.coarse_factor}): {self.max_slice_coarse}')
