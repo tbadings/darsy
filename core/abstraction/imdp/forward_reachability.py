@@ -75,26 +75,16 @@ def _make_forward_reach(step_fn, noise_sample_fn, num_samples, alpha, partition,
     return jax.jit(jax.vmap(per_action, in_axes=(0, 0, 0, 0)))
 
 
-def _put_frs_to_blocks(idx_lb, span, factor, number_per_dim):
-    start = idx_lb.astype(np.int64)
-    last = start + span - 1
-    start = start // factor * factor
-
-    local_last = last % number_per_dim
-    block_end = np.minimum((local_last // factor + 1) * factor, number_per_dim)
-    stop = last - local_last + block_end
-
-    stop = np.minimum(stop, start + number_per_dim)
-    return start, stop
-
-
 def _count_blocks(start, width, factor, size, wrap):
+    # Number of blocks completely inside
     cells = start + np.arange(width)
     if wrap:
         cells = cells % size
     else:
         cells = cells[cells < size]
-    return len(np.unique(cells // factor))
+    blocks, cells_in_window = np.unique(cells // factor, return_counts=True)
+    block_sizes = np.minimum((blocks + 1) * factor, size) - blocks * factor  # outer blocks are smaller
+    return int(np.sum(cells_in_window == block_sizes))
 
 
 def _max_blocks_per_dim(frs_idx_lb, max_slice, factor, number_per_dim, wrap):
@@ -145,10 +135,8 @@ class RectangularForward:
             )
             idx_lb, span = jax.device_get((idx_lb, span))
 
-            frs_start, frs_stop = _put_frs_to_blocks(idx_lb, span, self.coarse_factor, partition.number_per_dim)
-
-            self.frs_idx_lb[start:end] = frs_start
-            np.maximum(max_span, np.max(frs_stop - frs_start, axis=(0, 1)), out=max_span)
+            self.frs_idx_lb[start:end] = idx_lb
+            np.maximum(max_span, np.max(span, axis=(0, 1)), out=max_span)
 
         self.max_slice = tuple(max_span.tolist())
         self.max_slice_coarse = _max_blocks_per_dim(self.frs_idx_lb, self.max_slice, self.coarse_factor,

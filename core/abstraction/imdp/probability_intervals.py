@@ -109,8 +109,9 @@ def _make_counts_kernel(step_fn, noise_sample_fn, num_samples, partition, lipsch
         if not use_coarse:
             return inside, overlap, valid, succ_ids, leaves, None, None, None, None
 
-        # coarse blocks of the FRS
-        block_coords = idx_lb // factor + coarse_offsets
+        # coarse blocks
+        first_block = jnp.where(whole_circle, 0, (idx_lb + factor - 1) // factor)
+        block_coords = first_block + coarse_offsets
         block_valid = jnp.all((block_coords < coarse_shape) | wrap, axis=-1)
 
         # on wrapped dims, blocks past the grid end are a second lap starting at block 0
@@ -118,10 +119,15 @@ def _make_counts_kernel(step_fn, noise_sample_fn, num_samples, partition, lipsch
         block_start = (block_coords - laps * coarse_shape) * factor  # first fine cell of the block
         block_end = jnp.minimum(block_start + factor, number_per_dim)  # shorter at the edge
 
-        # block boxes, clipped to the FRS slice; empty ones are dropped
-        block_lb = jnp.maximum(boundary_lb + laps * period + block_start * cell_width, slice_lb)
-        block_ub = jnp.minimum(boundary_lb + laps * period + block_end * cell_width, slice_ub)
-        block_valid = block_valid & jnp.all(block_lb < block_ub, axis=-1)
+        # only blocks that are completely inside the FRS
+        slice_end = idx_lb + jnp.asarray(max_slice)
+        slice_end = jnp.where(wrap, slice_end, jnp.minimum(slice_end, number_per_dim))
+        block_fits = (laps * number_per_dim + block_end <= slice_end) | whole_circle
+        block_valid = block_valid & jnp.all(block_fits, axis=-1)
+
+        # block boxes
+        block_lb = boundary_lb + laps * period + block_start * cell_width
+        block_ub = boundary_lb + laps * period + block_end * cell_width
 
         block_centers = (block_lb + block_ub) / 2
         block_inside, block_overlap = _count_boxes(next_states, inflation, block_centers,
