@@ -105,7 +105,7 @@ def _make_counts_kernel(step_fn, noise_sample_fn, num_samples, partition, lipsch
         leaves_dim = (slice_dist + inflation > slice_half_width) & ~whole_circle
         leaves = jnp.sum(jnp.any(leaves_dim, axis=-1)).astype(jnp.int32)
 
-        # no second layer for factor 1
+        # no second layer
         if not use_coarse:
             return inside, overlap, valid, succ_ids, leaves, None, None, None, None
 
