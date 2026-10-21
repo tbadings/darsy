@@ -25,6 +25,11 @@ from core.abstraction.partition import DensePartition
 from core.jax_config import configure_jax
 from core.utils import add_file_handler, configure_logging
 
+import re
+import subprocess
+import warnings
+from pathlib import Path
+
 logger = logging.getLogger(__name__)
 
 # Repository root, i.e. the directory holding the entrypoint scripts (this module lives in core/).
@@ -93,6 +98,51 @@ def save_checkpoint(args, key, model, partition, abstraction):
     logger.info('Checkpoint saved.\n')
 
 
+def is_reach_avoid(formula):
+    """
+    Check whether the specification is exactly
+
+        F(goal) & G(!unsafe)
+
+    allowing whitespace and reversed conjunct order.
+    """
+
+    # Remove whitespace
+    formula = re.sub(r"\s+", "", formula)
+
+    # Accepted syntactic representations
+    reach_avoid_formulas = {
+        "F(goal)&G(!unsafe)",
+        "G(!unsafe)&F(goal)",
+        "(F(goal))&(G(!unsafe))",
+        "(G(!unsafe))&(F(goal))",
+    }
+
+    return formula in reach_avoid_formulas
+
+
+def is_scLTL(formula):
+    # Check whether the specification is co-safe
+
+    # Spot executables
+    spot_dir = Path("/home/ibon/miniconda3/envs/spot-env/bin")
+    spot_executable = spot_dir / "ltl2tgba"
+    ltlfilt_executable = spot_dir / "ltlfilt"
+
+    check_result = subprocess.run(
+        [
+            str(ltlfilt_executable),
+            "-f", formula,
+            "--guarantee"
+        ],
+        capture_output=True,
+        text=True,
+        check=False
+    )
+
+    return bool(check_result.stdout.strip())
+
+
 def prepare_abstraction(args, stamp, name, build):
     '''
     Obtain the abstraction for this run, either from a checkpoint or by building it from scratch.
@@ -149,6 +199,22 @@ def prepare_abstraction(args, stamp, name, build):
     model = benchmarks.create_model(args)
     logger.info('<<< Generating model took %.3f sec. >>>\n', time.time() - t)
 
+    # Check that the specification is scLTL
+    formula = getattr(model, "specification", None)
+    
+    if formula is None:
+        raise ValueError(
+            "The benchmark does not define a specification."
+        )
+    else:
+        reach_avoid = is_reach_avoid(formula)
+        scLTL = is_scLTL(formula)
+        if not (reach_avoid | scLTL):
+            raise ValueError(
+                "ERROR: invalid specification. The specification must be" \
+                " reach-avoid or co-safe (scLTL). "
+                )
+
     t = time.time()
 
     # Create partition of the continuous state space into convex polytope
@@ -172,32 +238,126 @@ def prepare_abstraction(args, stamp, name, build):
 
 
 def extract_policy_inputs(args, partition, policy, nr_states):
-    '''
-    Map the action index chosen for each state to the concrete control input.
+    """
+    Map action indices to continuous control inputs.
 
-    :param args: Argument namespace.
-    :param partition: Partition of the continuous state space.
-    :param policy: Action index per state, with -1 marking states without an enabled action.
-    :param nr_states: Number of abstraction states, including the absorbing state.
-    :return: Control input per state (shape: [nr_states - 1, action_dim]); states without an
-        enabled action hold NaN. The final abstraction state is absorbing and has no actions,
-        so it is excluded.
-    '''
+    Supports:
+        Reach-avoid: policy[s]
+        sc-LTL:      policy[s, z]
 
-    float_dtype = getattr(args, 'floatprecision', np.float32)
+    Parameters
+    ----------
+    args : Namespace
+        Argument namespace.
 
-    actions_np = np.array(partition.regions['actions'])
-    # DensePartition stores (1, num_actions, action_dim); broadcast to all states.
-    actions_np = np.broadcast_to(actions_np, (nr_states - 1, *actions_np.shape[1:]))
+    partition : object
+        Partition of the continuous state space.
 
-    policy_inputs = np.full(
-        (nr_states - 1, actions_np.shape[2]), fill_value=float('nan'), dtype=float_dtype
+    policy : np.ndarray
+        Global action indices. Shape:
+            (nr_states,) for reach-avoid
+            (nr_states, n_dfa_states) for sc-LTL
+
+    nr_states : int
+        Number of IMDP states, including the absorbing state.
+
+    Returns
+    -------
+    np.ndarray
+        Continuous control inputs.
+
+        Reach-avoid:
+            (nr_states - 1, control_dim)
+
+        sc-LTL:
+            (nr_states - 1, n_dfa_states, control_dim)
+
+        States without an enabled action contain NaN.
+    """
+
+    float_dtype = getattr(args, "floatprecision", np.float32)
+
+    policy = np.asarray(policy)
+
+    actions_np = np.asarray(partition.regions["actions"])
+
+    n_states = nr_states - 1
+
+    # DensePartition stores actions as
+    # (1, n_actions, control_dim).
+    # SparsePartition stores them as
+    # (n_states, n_actions, control_dim).
+    actions_np = np.broadcast_to(
+        actions_np,
+        (n_states, *actions_np.shape[1:])
     )
-    mask = policy[:-1] >= 0
-    policy_inputs[mask] = actions_np[mask, policy[:-1][mask]]
+
+    control_dim = actions_np.shape[2]
+    n_actions = actions_np.shape[1]
+
+    # --------------------------------------------------
+    # Reach-avoid policy: sigma(s)
+    # --------------------------------------------------
+
+    if policy.ndim == 1:
+
+        if policy.shape != (nr_states,):
+            raise ValueError("Invalid reach-avoid policy shape")
+
+        policy_inputs = np.full(
+            (n_states, control_dim),
+            np.nan,
+            dtype=float_dtype
+        )
+
+        valid = (
+            (policy[:n_states] >= 0)
+            & (policy[:n_states] < n_actions)
+        )
+
+        state_ids = np.flatnonzero(valid)
+
+        policy_inputs[state_ids] = actions_np[
+            state_ids,
+            policy[state_ids]
+        ]
+
+    # --------------------------------------------------
+    # sc-LTL policy: sigma(s,z)
+    # --------------------------------------------------
+
+    elif policy.ndim == 2:
+
+        if policy.shape[0] != nr_states:
+            raise ValueError("Invalid sc-LTL policy shape")
+
+        n_dfa_states = policy.shape[1]
+
+        policy_inputs = np.full(
+            (n_states, n_dfa_states, control_dim),
+            np.nan,
+            dtype=float_dtype
+        )
+
+        valid = (
+            (policy[:n_states] >= 0)
+            & (policy[:n_states] < n_actions)
+        )
+
+        state_ids, dfa_ids = np.where(valid)
+
+        policy_inputs[state_ids, dfa_ids] = actions_np[
+            state_ids,
+            policy[state_ids, dfa_ids]
+        ]
+
+    else:
+        raise ValueError(
+            "Policy must have shape (n_states,) "
+            "or (n_states, n_dfa_states)"
+        )
 
     return policy_inputs
-
 
 def _guard(description, failures, fn, *fn_args, **fn_kwargs):
     '''
@@ -306,3 +466,100 @@ def finish(args):
 
     logger.info('\n=== Run finished. Output directory: %s ===', args.output_dir)
     logger.info('====================\n')
+
+
+
+def extract_product_policy_inputs(args, partition, policy, nr_states):
+    """Map global action indices policy[s,z] to physical inputs u[s,z,:]."""
+    policy = np.asarray(policy, dtype=np.int32)
+    if policy.ndim != 2 or policy.shape[0] != nr_states:
+        raise ValueError('Expected policy shape (nr_states, n_dfa_states)')
+    actions = np.asarray(partition.regions['actions'])
+    if actions.shape[0] == 1:
+        actions = np.broadcast_to(actions, (nr_states - 1, *actions.shape[1:]))
+    if actions.shape[0] != nr_states - 1:
+        raise ValueError('Partition action count does not match physical states')
+    result = np.full((*policy.shape, actions.shape[-1]), np.nan, dtype=float)
+    valid = policy[:-1] >= 0
+    ss, zz = np.nonzero(valid)
+    if np.any(policy[ss, zz] >= actions.shape[1]):
+        raise ValueError('Policy references an action outside the partition action grid')
+    result[ss, zz] = actions[ss, policy[ss, zz]]
+    return result
+
+
+
+
+def draw_regions_of_interest(ax, model, dimensions=None):
+    """Overlay transparent region boundaries on an existing 2D heatmap axes."""
+    from matplotlib.patches import Rectangle
+
+    if dimensions is None:
+        dimensions = model.plot_dimensions
+    if len(dimensions) != 2:
+        raise ValueError('Region overlays require exactly two plot dimensions')
+    d0, d1 = map(int, dimensions)
+    for name, boxes in getattr(model, 'regions', {}).items():
+        boxes = np.asarray(boxes, dtype=float)
+        if boxes.size == 0:
+            continue
+        if boxes.ndim != 3 or boxes.shape[1] != 2 or boxes.shape[2] <= max(d0, d1):
+            raise ValueError(f'Invalid geometry for region {name}')
+        for lower, upper in boxes:
+            ax.add_patch(Rectangle(
+                (lower[d0], lower[d1]),
+                upper[d0] - lower[d0],
+                upper[d1] - lower[d1],
+                facecolor='none', edgecolor='black', linewidth=1.8,
+                linestyle='--', zorder=20,
+                transform=getattr(ax, 'roi_physical_transform', ax.transData),
+            ))
+
+def report_scLTL(args, stamp, model, partition, V_lower, policy, dfa, labels,
+                  policy_inputs, *, iterations=100, num_traces=10, sim_horizon=1000):
+    """Validate product policy and plot the initial-label DFA slice.
+
+    Heatmaps display values and controls for z = delta(z0,L(s)) at each s.
+    They are not plots of the full product-state policy.
+    """
+    from core.plotting.heatmap import heatmap
+    from core.plotting.traces import plot_traces, plot_traces_3d
+    from core.validate.simulate import MonteCarloSim_scLTL
+
+    failures = []
+    labels = np.asarray(labels, dtype=np.int64)
+    initial_z = np.asarray(dfa.transitions, dtype=np.int32)[int(dfa.initial_state), labels[:partition.size]]
+    physical_s = np.arange(partition.size)
+    V_initial = np.asarray(V_lower)[physical_s, initial_z]
+    inputs_initial = np.asarray(policy_inputs)[physical_s, initial_z]
+
+    sim = _guard('sc-LTL Monte Carlo simulation', failures, MonteCarloSim_scLTL,
+                 model, partition, policy, policy_inputs, model.x0, dfa, labels,
+                 iterations=iterations, sim_horizon=sim_horizon, verbose=False)
+    if sim is not None:
+        logger.info('Empirical sc-LTL satisfaction probability: %.6f', sim.results['satprob'])
+        np.savez_compressed(args.output_dir / 'scLTL_monte_carlo.npz',
+                            satisfied=sim.results['satisfied'],
+                            satprob=sim.results['satprob'])
+
+    _guard('sc-LTL initial-state satisfaction heatmap', failures, heatmap,
+           args, stamp, idx_show=model.plot_dimensions,
+           partition=partition, results=V_initial, filename='scLTL_satprob_initial',
+           overlay=lambda ax: draw_regions_of_interest(ax, model, model.plot_dimensions))
+    _guard('sc-LTL initial-state control heatmap', failures, heatmap,
+           args, stamp, idx_show=model.plot_dimensions,
+           partition=partition, results=inputs_initial[:, 0], filename='scLTL_policy_initial')
+
+    if sim is not None:
+        traces = sim.results['traces']
+        _guard('sc-LTL trace plot', failures, plot_traces,
+               args, stamp, model.plot_dimensions, partition, model, traces,
+               line=False, num_traces=num_traces, add_unsafe_box=False,
+               labeled_regions=True)
+        dims_3d = getattr(model, 'plot_dimensions_3d', None)
+        if dims_3d is not None:
+            _guard('sc-LTL 3D trace plot', failures, plot_traces_3d,
+                   args, stamp, dims_3d, partition, model, traces,
+                   num_traces=num_traces, filename='scLTL_traces_3d',
+                   labeled_regions=True)
+    return failures

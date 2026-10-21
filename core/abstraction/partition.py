@@ -223,6 +223,18 @@ class _HyperrectangularPartition(object):
         }
         self.size = len(centers_shifted)
 
+        # Geometry-only region membership. No DFA dependency.
+        self.regions_of_interest = {
+            name: np.asarray(boxes, dtype=float).copy()
+            for name, boxes in getattr(model, 'regions', {}).items()
+        }
+        self.region_labels = {
+            name: frozenset(model.labeling_function(name))
+            for name in self.regions_of_interest
+        }
+        self.atomic_propositions = tuple(getattr(model, 'atomic_propositions', ()))
+        self._identify_regions_of_interest()
+
         # Sentinel state id used by JAX kernels for coordinates that are not present.
         self.missing_state = int(self.size)
 
@@ -250,6 +262,42 @@ class _HyperrectangularPartition(object):
 
         logger.info(f"(Number of states: {len(self.regions['idxs'])})")
         logger.info(f"(Number of actions: {actions.shape[1]})")
+
+    def _identify_regions_of_interest(self):
+        """Identify cells intersecting each region of interest.
+
+        A cell belongs to a region if it has positive-volume intersection
+        with at least one hyperrectangle defining that region. Boundary-only
+        contact does not count. The optional partial_region_cells masks are
+        retained for diagnostics but do not restrict membership or labeling.
+        """
+        lbs = np.asarray(self.regions['lower_bounds'])
+        ubs = np.asarray(self.regions['upper_bounds'])
+        n, dim = lbs.shape
+        self.states_of_interest = {}
+        self.partial_region_cells = {}
+
+        for name, boxes in self.regions_of_interest.items():
+            boxes = np.asarray(boxes, dtype=float)
+            if boxes.size == 0:
+                boxes = np.empty((0, 2, dim), dtype=float)
+            if boxes.ndim != 3 or boxes.shape[1:] != (2, dim):
+                raise ValueError(f'Invalid region geometry for {name}')
+
+            intersects = np.zeros(n, dtype=bool)
+            contained = np.zeros(n, dtype=bool)
+            for lo, hi in boxes:
+                if np.any(lo > hi):
+                    raise ValueError(f'Invalid bounds in region {name}')
+
+                # Positive-volume intersection in every dimension.
+                intersects |= np.all(lbs < hi, axis=1) & np.all(ubs > lo, axis=1)
+                contained |= np.all(lbs >= lo, axis=1) & np.all(ubs <= hi, axis=1)
+
+            # Include both fully contained and partially overlapping cells.
+            self.states_of_interest[name] = intersects
+            # Diagnostic only; not used to exclude cells from labels.
+            self.partial_region_cells[name] = intersects & ~contained
 
     def _cells_and_actions(self, model):
         '''Return (centers_unit, actions): the kept unit-cube grid indices and their action vectors.'''

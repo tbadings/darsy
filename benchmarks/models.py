@@ -16,6 +16,45 @@ logger = logging.getLogger(__name__)
 def wrap_theta(theta):
     return (theta + jnp.pi) % (2 * jnp.pi) - jnp.pi
 
+class DubinsDynamics2D:
+    def __init__(self, args):
+
+        # Discretization step size
+        self.tau = 1
+
+        self.n = 2
+        self.p = 2
+        self.state_variables = ['x', 'y']
+        self.wrap = jnp.array([False, False], dtype=bool)
+
+        self.alpha_min = 0.85
+        self.alpha_max = 0.85
+        self.alpha = 0.85
+
+        # Covariance of the process noise
+        if args.noise_distr == 'gaussian':
+            self.noise = GaussianDistr(np.array([0.15, 0.15])**2) # From stdev to covariance
+        elif args.noise_distr == 'triangular':
+            self.noise = TriangularDistr(np.array([0.2, 0.2])) # Halfwidth
+        else:
+            raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
+
+        self.lipschitz = np.array([
+            [1.0, 0.0],
+            [0.0, 1.0],
+        ])
+
+    def step(self, state, action, noise):
+        x, y = state[0], state[1]
+        u1, u2 = action[0], action[1]
+        x_next = x + self.tau * u2 * jnp.cos(u1)
+        y_next = y + self.tau * u2 * jnp.sin(u1)
+        
+        state_next = jnp.array([x_next, y_next])
+
+        return state_next
+
+
 class DubinsDynamics3D:
     def __init__(self, args):
 

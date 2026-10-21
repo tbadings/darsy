@@ -15,6 +15,69 @@ from core.pipeline import configure_run, extract_policy_inputs, finish, prepare_
 
 logger = logging.getLogger(__name__)
 
+import re
+
+def identify_states_of_interest(partition, regions):
+    """
+    Identify abstract states belonging to each region of interest.
+
+    Parameters
+    ----------
+    partition : _HyperrectangularPartition
+        Partition of the continuous state space.
+
+    regions : dict
+        Dictionary mapping region names to arrays of
+        hyperrectangles with shape (n_rectangles, 2, n_dim).
+
+    Returns
+    -------
+    dict
+        Mapping each region name to a Boolean array
+        identifying its abstract states.
+    """
+
+    lower_bounds = np.asarray(
+        partition.regions["lower_bounds"]
+    )
+
+    upper_bounds = np.asarray(
+        partition.regions["upper_bounds"]
+    )
+
+    n_states = partition.size
+
+    states_of_interest = {}
+
+    for r, rectangles in regions.items():
+
+        rectangles = np.asarray(rectangles, dtype=float)
+
+        # Boolean mask for states belonging to region r
+        contained = np.zeros(n_states, dtype=bool)
+
+        for rectangle in rectangles:
+
+            region_lb = rectangle[0]
+            region_ub = rectangle[1]
+
+            inside = (
+                np.all(
+                    lower_bounds >= region_lb,
+                    axis=1
+                )
+                &
+                np.all(
+                    upper_bounds <= region_ub,
+                    axis=1
+                )
+            )
+
+            contained |= inside
+
+        states_of_interest[r] = contained
+
+    return states_of_interest
 
 def build_imdp(args, model, partition, s_init, coarse_factor=1, use_coarse=False):
     '''
@@ -30,10 +93,18 @@ def build_imdp(args, model, partition, s_init, coarse_factor=1, use_coarse=False
     '''
 
     # Create actions based on forward reachable sets
-    actions = RectangularForward(args=args, partition=partition, model=model, coarse_factor=coarse_factor)
+    actions = RectangularForward(
+        args=args,
+        partition=partition,
+        model=model,
+        coarse_factor=coarse_factor
+    )
 
     # Coarse partition grouping fine cells into blocks
-    coarse_partition = CoarsePartition(partition, coarse_factor)
+    coarse_partition = CoarsePartition(
+        partition,
+        coarse_factor
+    )
 
     # Transition probability intervals for every state-action pair.
     P_full, S_id, A_id, P_absorbing, Q_id, P_coarse = compute_probability_intervals(
@@ -46,12 +117,13 @@ def build_imdp(args, model, partition, s_init, coarse_factor=1, use_coarse=False
         use_coarse=use_coarse,
     )
 
-    return IMDP(
+    # Construct IMDP
+    imdp = IMDP(
         partition=partition,
-        states=np.array(partition.regions['idxs']),
+        states=np.array(partition.regions["idxs"]),
         x0=model.x0,
-        goal_regions=np.array(partition.goal['bools']),
-        critical_regions=np.array(partition.critical['bools']),
+        goal_regions=np.array(partition.goal["bools"]),
+        critical_regions=np.array(partition.critical["bools"]),
         P_full=P_full,
         S_id=S_id,
         A_id=A_id,
@@ -60,6 +132,23 @@ def build_imdp(args, model, partition, s_init, coarse_factor=1, use_coarse=False
         Q_id=Q_id,
         P_coarse=P_coarse,
     )
+
+    # Identify sets of states of interest and their labels
+    imdp.states_of_interest = identify_states_of_interest(
+        partition,
+        model.regions
+    )
+
+    imdp.region_labels = {
+        r: set(model.labeling_function(r))
+        for r in model.regions
+    }
+
+    imdp.atomic_propositions = list(
+        model.atomic_propositions
+    )
+
+    return imdp
 
 
 def solve_imdp(args, imdp, s0):
