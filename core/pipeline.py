@@ -124,14 +124,9 @@ def is_reach_avoid(formula):
 def is_scLTL(formula):
     # Check whether the specification is co-safe
 
-    # Spot executables
-    spot_dir = Path("/home/ibon/miniconda3/envs/spot-env/bin")
-    spot_executable = spot_dir / "ltl2tgba"
-    ltlfilt_executable = spot_dir / "ltlfilt"
-
     check_result = subprocess.run(
         [
-            str(ltlfilt_executable),
+            "ltlfilt",
             "-f", formula,
             "--guarantee"
         ],

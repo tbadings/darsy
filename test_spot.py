@@ -1,12 +1,5 @@
 import subprocess
 import warnings
-from pathlib import Path
-
-# Spot executables
-spot_dir = Path("/home/ibon/miniconda3/envs/spot-env/bin")
-
-spot_executable = spot_dir / "ltl2tgba"
-ltlfilt_executable = spot_dir / "ltlfilt"
 
 # LTL specification
 # formula = "(!b) U (a)"
@@ -16,7 +9,7 @@ formula = "F(a) & G(!b)"
 # Check whether the specification is co-safe
 check_result = subprocess.run(
     [
-        str(ltlfilt_executable),
+        "ltlfilt",
         "-f", formula,
         "--guarantee"
     ],
@@ -38,7 +31,7 @@ if not is_scltl:
 # Generate the deterministic automaton
 result = subprocess.run(
     [
-        str(spot_executable),
+        "ltl2tgba",
         "-f", formula,
         "--deterministic",
         "--complete",

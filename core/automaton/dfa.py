@@ -5,11 +5,6 @@ from dataclasses import dataclass
 import numpy as np
 
 
-SPOT_EXECUTABLE = (
-    "/home/ibon/miniconda3/envs/spot-env/bin/ltl2tgba"
-)
-
-
 @dataclass
 class DFA:
     """
@@ -164,10 +159,7 @@ def _evaluate_guard(guard, valuation):
 
     return result
 
-def scLTL_to_DFA(
-    formula,
-    spot_executable=SPOT_EXECUTABLE
-):
+def scLTL_to_DFA(formula):
     """
     Translate an sc-LTL formula into a complete DFA.
 
@@ -183,9 +175,6 @@ def scLTL_to_DFA(
     formula : str
         sc-LTL specification.
 
-    spot_executable : str
-        Path to Spot's ltl2tgba executable.
-
     Returns
     -------
     DFA
@@ -193,7 +182,7 @@ def scLTL_to_DFA(
     """
 
     command = [
-        spot_executable,
+        "ltl2tgba",
         "-f", formula,
         "--deterministic",
         "--complete",
