@@ -79,12 +79,18 @@ def identify_states_of_interest(partition, regions):
 
     return states_of_interest
 
-def build_imdp(args, model, partition, s_init):
-    """
+def build_imdp(args, model, partition, s_init, coarse_factor=1, use_coarse=False):
+    '''
     Build the IMDP abstraction of the given model.
-    """
 
-    coarse_factor = args.coarse_factor
+    :param args: Argument namespace.
+    :param model: Benchmark model.
+    :param partition: Partition of the continuous state space.
+    :param s_init: State index of the initial continuous state (used for debug output).
+    :param coarse_factor: default is 1 to not affect standard IMDP.
+    :param use_coarse: True to compute the second layer (2IMDP).
+    :return: IMDP abstraction.
+    '''
 
     # Create actions based on forward reachable sets
     actions = RectangularForward(
@@ -100,16 +106,15 @@ def build_imdp(args, model, partition, s_init):
         coarse_factor
     )
 
-    # Transition probability intervals
-    P_full, S_id, A_id, P_absorbing, Q_id, P_coarse = (
-        compute_probability_intervals(
-            args=args,
-            model=model,
-            partition=partition,
-            actions=actions,
-            coarse_partition=coarse_partition,
-            debug_state=s_init,
-        )
+    # Transition probability intervals for every state-action pair.
+    P_full, S_id, A_id, P_absorbing, Q_id, P_coarse = compute_probability_intervals(
+        args=args,
+        model=model,
+        partition=partition,
+        actions=actions,
+        coarse_partition=coarse_partition,
+        debug_state=s_init,
+        use_coarse=use_coarse,
     )
 
     # Construct IMDP
@@ -174,6 +179,7 @@ def solve_imdp(args, imdp, s0):
 
 if __name__ == '__main__':
     args = parse_arguments()
+    args.coarse_factor = 1
     stamp = configure_run(args)
 
     model, partition, imdp = prepare_abstraction(args, stamp, 'IMDP', build_imdp)

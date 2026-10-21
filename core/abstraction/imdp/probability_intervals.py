@@ -88,6 +88,7 @@ def _make_batch_kernel(
     coarse_strides: jnp.ndarray,
     coarse_shape: jnp.ndarray,
     factor: int,
+    use_coarse: bool,
 ):
     """JIT-compiled vmapped kernel; coarse_* describe the coarse block window."""
 
@@ -135,6 +136,11 @@ def _make_batch_kernel(
         # fine successor ids
         succ_ids = _linear_ids(grid_coords, strides, number_per_dim, cell_valid)
 
+        # no second layer for factor 1
+        if not use_coarse:
+            return (counts_lb, counts_ub, succ_ids, cell_valid, count_abs_ub,
+                    None, None, None, None)
+
         # coarse blocks of the FRS window
         block_coords = (idx_lb // factor) + coarse_offsets  # block grid coords
         block_valid = _cells_in_grid(block_coords, coarse_shape)
@@ -174,6 +180,7 @@ def compute_probability_intervals(
     actions,
     coarse_partition,
     debug_state: int | None = None,
+    use_coarse: bool = False,
 ) -> tuple[dict[int, np.ndarray], dict[int, np.ndarray], dict[int, np.ndarray], dict[int, np.ndarray],
           dict[int, np.ndarray], dict[int, np.ndarray]]:
     """Transition probability intervals via sampling and Clopper-Pearson bounds."""
@@ -187,7 +194,11 @@ def compute_probability_intervals(
 
     # sampling and confidence settings
     num_samples = args.num_samples
-    pac_beta = args.pac_beta
+    frs_size = int(np.prod(actions.max_slice))
+    if use_coarse:
+        frs_size += int(np.prod(actions.max_slice_coarse))
+    pac_beta = args.pac_beta / (num_regions * num_actions * frs_size)
+    print("pac_beta=", pac_beta)
     float_dtype = args.floatprecision
     batch_size = args.batch_size
 
@@ -206,9 +217,13 @@ def compute_probability_intervals(
             f'Coarse factor mismatch: actions built with {actions.coarse_factor}, '
             f'coarse partition built with {coarse_factor}.'
         )
-    coarse_offsets_np = _window_offsets(actions.max_slice_coarse)
-    coarse_strides_np = np.asarray(coarse_partition.coarse_strides)
-    coarse_shape_np = np.asarray(coarse_partition.coarse_shape)
+    coarse_offsets_np = None
+    coarse_strides_np = None
+    coarse_shape_np = None
+    if use_coarse:
+        coarse_offsets_np = jax.device_put(_window_offsets(actions.max_slice_coarse))
+        coarse_strides_np = jax.device_put(np.asarray(coarse_partition.coarse_strides))
+        coarse_shape_np = jax.device_put(np.asarray(coarse_partition.coarse_shape))
 
     # outputs, keyed by region id
     P_full: dict[int, np.ndarray] = {}  # fine intervals
@@ -238,10 +253,11 @@ def compute_probability_intervals(
         boundary_ub=jax.device_put(partition.boundary_ub),
         lipschitz=jax.device_put(lipschitz_np),
         max_slice=jax.device_put(jnp.asarray(actions.max_slice, dtype=jnp.int32)),
-        coarse_offsets=jax.device_put(coarse_offsets_np),
-        coarse_strides=jax.device_put(coarse_strides_np),
-        coarse_shape=jax.device_put(coarse_shape_np),
+        coarse_offsets=coarse_offsets_np,
+        coarse_strides=coarse_strides_np,
+        coarse_shape=coarse_shape_np,
         factor=coarse_factor,
+        use_coarse=use_coarse,
     )
 
     # one pass over the regions in batches
@@ -273,8 +289,9 @@ def compute_probability_intervals(
         p_abs_ub = cp_table_ub[count_abs_ub]
         p_abs_lb = np.zeros_like(p_abs_ub)
         # same lookup for the coarse blocks
-        c_prob_lb = np.where(coarse_valid, cp_table_lb[coarse_counts_lb], 0.0)
-        c_prob_ub = np.where(coarse_valid, cp_table_ub[coarse_counts_ub], 0.0)
+        if use_coarse:
+            c_prob_lb = np.where(coarse_valid, cp_table_lb[coarse_counts_lb], 0.0)
+            c_prob_ub = np.where(coarse_valid, cp_table_ub[coarse_counts_ub], 0.0)
 
         # store one entry per region
         for i, s in enumerate(range(b_start, b_end)):
@@ -283,8 +300,9 @@ def compute_probability_intervals(
             A_id[s_int] = action_ids  # all actions enabled
             P_full[s_int] = _to_interval_columns(prob_lb[i], prob_ub[i]).astype(float_dtype)
             P_absorbing[s_int] = _to_interval_columns(p_abs_lb[i], p_abs_ub[i]).astype(float_dtype)
-            Q_id[s_int] = coarse_ids[i].astype(np.int32)  # coarse successors
-            P_coarse[s_int] = _to_interval_columns(c_prob_lb[i], c_prob_ub[i]).astype(float_dtype)
+            if use_coarse:
+                Q_id[s_int] = coarse_ids[i].astype(np.int32)  # coarse successors
+                P_coarse[s_int] = _to_interval_columns(c_prob_lb[i], c_prob_ub[i]).astype(float_dtype)
 
     # debug output for one region
     if debug_state is not None and debug_state in P_full:
@@ -292,7 +310,8 @@ def compute_probability_intervals(
         logger.info(f'  Enabled actions: {A_id[debug_state]}')
         logger.info(f'  Successors shape: {S_id[debug_state].shape}')
         logger.info(f'  P_absorbing: {P_absorbing[debug_state]}')
-        logger.info(f'  Coarse successors shape: {Q_id[debug_state].shape}')
+        if use_coarse:
+            logger.info(f'  Coarse successors shape: {Q_id[debug_state].shape}')
 
     logger.info(f'Probability intervals computed (took {time.time() - t_start:.3f} sec.)')
     return P_full, S_id, A_id, P_absorbing, Q_id, P_coarse

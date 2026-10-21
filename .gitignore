@@ -57,3 +57,4 @@ plot_transition_interactive.py
 plot_transition.py
 frs_visualization.png
 VisualizeFRS.py
+results/results.mat

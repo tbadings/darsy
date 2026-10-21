@@ -97,7 +97,7 @@ class RectangularForward:
         batch_forward_reach = _make_forward_reach(
             model.step,
             model.noise.sample_jax,
-            args.num_samples,
+            args.frs_num_samples,
             args.alpha,
             jax.device_put(partition.number_per_dim),
             jax.device_put(partition.boundary_lb),
