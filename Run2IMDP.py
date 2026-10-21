@@ -15,7 +15,7 @@ from core.abstraction.imdp.robust_vi_2layer import (
 from core.options import parse_arguments
 from core.pipeline import configure_run, extract_policy_inputs, finish, prepare_abstraction, report
 from RunIMDP import build_imdp
-from export_2imdp_matlab import save_2imdp_matlab
+# from export_2imdp_matlab import save_2imdp_matlab
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +65,13 @@ if __name__ == '__main__':
     stamp = configure_run(args)
     model, partition, abstraction = prepare_abstraction(args, stamp, '2IMDP', build_2imdp)
 
-    # Export to MATLAB
-    save_2imdp_matlab(
-        abstraction,
-        filename="results/results.mat",
-        max_iter=10000,
-        tol_VI=1e-6,
-        )
+    # Export to MATLAB (debug only)
+    # save_2imdp_matlab(
+    #     abstraction,
+    #     filename="results/results.mat",
+    #     max_iter=10000,
+    #     tol_VI=1e-6,
+    #     )
 
     logger.info('=== 2I-MDP policy synthesis (solver=jax) ===')
     start = time.time()
