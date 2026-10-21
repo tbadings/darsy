@@ -68,7 +68,7 @@ def parse_arguments(argv=None):
                         help="Number of state regions to process per batch when computing forward reachable sets. Larger values reduce Python-JAX round trips but increase peak memory usage.")
     parser.add_argument('--num_samples', type=_positive_int, default=5000,
                         help="Number of samples per (cell, action) pair for data-driven forward reachable set computation.")
-    parser.add_argument('--frs_num_samples', type=_positive_int, default=500,
+    parser.add_argument('--frs_num_samples', type=_positive_int, default=100,
                         help="Number of samples per state-action for the forward reachable set.")
     parser.add_argument('--alpha', type=_probability, default=0.00,
                         help="Coverage level for the FRS percentile interval. The FRS is the "

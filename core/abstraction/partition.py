@@ -166,6 +166,7 @@ class _HyperrectangularPartition(object):
         partition_boundary = model.partition['boundary']
         self.boundary_lb = partition_boundary[0]
         self.boundary_ub = partition_boundary[1]
+        self.wrap = np.asarray(model.wrap, dtype=bool)
 
         # From the partition boundary, determine where the first grid centers are placed
         self.cell_width = (partition_boundary[1] - partition_boundary[0]) / self.number_per_dim

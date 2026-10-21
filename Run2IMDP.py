@@ -28,7 +28,7 @@ from core.pipeline import (
 )
 
 from RunIMDP import build_imdp
-from export_2imdp_matlab import save_2imdp_matlab
+# from export_2imdp_matlab import save_2imdp_matlab
 
 logger = logging.getLogger(__name__)
 
@@ -136,12 +136,13 @@ if __name__ == '__main__':
     # Export 2IMDP to MATLAB
     # --------------------------------------------------
 
-    save_2imdp_matlab(
-        abstraction,
-        filename="results/results_2imdp.mat",
-        max_iter=10000,
-        tol_VI=1e-6,
-    )
+    # Export to MATLAB (debug only)
+    # save_2imdp_matlab(
+    #     abstraction,
+    #     filename="results/results_2imdp.mat",
+    #     max_iter=10000,
+    #     tol_VI=1e-6,
+    #     )
 
     # --------------------------------------------------
     # Initial abstract state
