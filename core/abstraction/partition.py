@@ -154,8 +154,9 @@ class _HyperrectangularPartition(object):
     # downstream code (forward_reachability / successor_ids / probability_intervals) to pick fast paths.
     rectangular: bool = None
 
-    def __init__(self, model):
+    def __init__(self, model, float_dtype):
         t_total = time.time()
+        self.float_dtype = float_dtype
 
         self.dimension = model.n
 
@@ -216,7 +217,7 @@ class _HyperrectangularPartition(object):
         logger.debug(f'- Grid points defined (took {(time.time() - t):.3f} sec.)')
 
         self.regions = {
-            'centers': jnp.array(centers_shifted, dtype=float),
+            'centers': jnp.array(centers_shifted, dtype=self.float_dtype),
             'idxs': region_idxs,
             'lower_bounds': lower_bounds,
             'upper_bounds': upper_bounds,
@@ -226,7 +227,7 @@ class _HyperrectangularPartition(object):
 
         # Geometry-only region membership. No DFA dependency.
         self.regions_of_interest = {
-            name: np.asarray(boxes, dtype=float).copy()
+            name: np.asarray(boxes, dtype=self.float_dtype).copy()
             for name, boxes in getattr(model, 'regions', {}).items()
         }
         self.region_labels = {
@@ -279,9 +280,9 @@ class _HyperrectangularPartition(object):
         self.partial_region_cells = {}
 
         for name, boxes in self.regions_of_interest.items():
-            boxes = np.asarray(boxes, dtype=float)
+            boxes = np.asarray(boxes, dtype=self.float_dtype)
             if boxes.size == 0:
-                boxes = np.empty((0, 2, dim), dtype=float)
+                boxes = np.empty((0, 2, dim), dtype=self.float_dtype)
             if boxes.ndim != 3 or boxes.shape[1:] != (2, dim):
                 raise ValueError(f'Invalid region geometry for {name}')
 
@@ -348,9 +349,9 @@ class DensePartition(_HyperrectangularPartition):
 
     rectangular = True
 
-    def __init__(self, model, verbose=False):
+    def __init__(self, model, float_dtype, verbose=False):
         logger.info('Define dense partition...')
-        super().__init__(model)
+        super().__init__(model, float_dtype)
 
         print('')
 
@@ -368,7 +369,7 @@ class DensePartition(_HyperrectangularPartition):
         action_array = jnp.array(list(itertools.product(*discrete_actions_per_dimension)))
         # Store as (1, num_actions, action_dim) — broadcast in forward_reachability to avoid
         # materializing a (num_states, num_actions, action_dim) array for large rectangular partitions.
-        actions = action_array[None, :, :].astype(float)
+        actions = action_array[None, :, :].astype(self.float_dtype)
         return centers_unit, actions
 
 
@@ -381,11 +382,11 @@ class SparsePartition(_HyperrectangularPartition):
 
     rectangular = False
 
-    def __init__(self, model, active_states, active_actions, verbose=False):
+    def __init__(self, model, active_states, active_actions, float_dtype, verbose=False):
         logger.info('=== Define sparse partition ===')
         self._active_states = active_states
         self._active_actions = active_actions
-        super().__init__(model)
+        super().__init__(model, float_dtype)
 
         print('')
 
@@ -396,7 +397,7 @@ class SparsePartition(_HyperrectangularPartition):
         # Gather each state's enabled action vectors from the per-state action map.
         keys = np.asarray(centers_unit, dtype=int).tolist()
         example = self._active_actions[tuple(keys[0])]
-        actions = np.zeros((len(keys), example.shape[0], example.shape[1]), dtype=float)
+        actions = np.zeros((len(keys), example.shape[0], example.shape[1]), dtype=self.float_dtype)
         for i, key in enumerate(keys):
             a = self._active_actions[tuple(key)]
             assert a.shape == example.shape, (
@@ -404,7 +405,7 @@ class SparsePartition(_HyperrectangularPartition):
                 "All states must have the same number of actions."
             )
             actions[i] = a
-        return centers_unit, jnp.array(actions, dtype=float)
+        return centers_unit, jnp.array(actions, dtype=self.float_dtype)
 
 
 class CoarsePartition:

@@ -33,4 +33,4 @@ def create_model(args):
 	if model_cls is None:
 		raise ValueError(f"The passed model '{args.model}' could not be found")
 
-	return parse_model(model_cls(args))
+	return parse_model(model_cls(args), args.floatprecision)

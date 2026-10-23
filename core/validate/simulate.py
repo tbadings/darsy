@@ -228,7 +228,7 @@ class MonteCarloSim_scLTL(MonteCarloSim):
 
         self.policy_inputs = np.asarray(
             policy_inputs,
-            dtype=float
+            dtype=self.partition.float_dtype
         )
 
         self._accepting = np.asarray(
@@ -386,7 +386,7 @@ class MonteCarloSim_scLTL(MonteCarloSim):
             True if the DFA reaches an accepting state.
         """
 
-        x = np.asarray(x0, dtype=float).copy()
+        x = np.asarray(x0, dtype=self.partition.float_dtype).copy()
 
         # --------------------------------------------------
         # Randomize initial continuous state if requested
@@ -524,7 +524,7 @@ class MonteCarloSim_scLTL(MonteCarloSim):
 
             u = np.asarray(
                 self.policy_inputs[s, z],
-                dtype=float
+                dtype=self.partition.float_dtype
             )
 
             if not np.all(np.isfinite(u)):
@@ -552,7 +552,7 @@ class MonteCarloSim_scLTL(MonteCarloSim):
                     u,
                     self.noise[m, k]
                 ),
-                dtype=float
+                dtype=self.partition.float_dtype
             )
 
             trace["x"].append(x.copy())

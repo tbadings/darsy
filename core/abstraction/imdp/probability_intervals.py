@@ -20,11 +20,11 @@ from core.utils import create_batches, wrap_diff
 logger = logging.getLogger(__name__)
 
 
-def compute_cp_table(num_samples: int, beta: float) -> tuple[np.ndarray, np.ndarray]:
+def compute_cp_table(num_samples: int, beta: float, float_dtype) -> tuple[np.ndarray, np.ndarray]:
     """Clopper-Pearson lookup table: binomial count k -> confidence bounds at level 1 - beta."""
     k = np.arange(num_samples + 1)
-    cp_lb = np.zeros(num_samples + 1, dtype=np.float64)  # count 0 -> lower bound 0
-    cp_ub = np.ones(num_samples + 1, dtype=np.float64)   # count N -> upper bound 1
+    cp_lb = np.zeros(num_samples + 1, dtype=float_dtype)  # count 0 -> lower bound 0
+    cp_ub = np.ones(num_samples + 1, dtype=float_dtype)   # count N -> upper bound 1
 
     cp_lb[1:] = scipy.stats.beta.ppf(beta / 2.0, k[1:], num_samples - k[1:] + 1)          # lower quantile
     cp_ub[:-1] = scipy.stats.beta.ppf(1.0 - beta / 2.0, k[:-1] + 1, num_samples - k[:-1])  # upper quantile
@@ -167,9 +167,9 @@ def compute_probability_intervals(args, model, partition, actions, coarse_partit
     num_intervals = num_cells * num_actions * intervals_per_pair
     beta_per_interval = args.pac_beta / num_intervals
     logger.info(f'Union bound over {num_intervals} intervals: per interval beta = {beta_per_interval:.3e}')
-    cp_lb, cp_ub = compute_cp_table(args.num_samples, beta_per_interval)
+    cp_lb, cp_ub = compute_cp_table(args.num_samples, beta_per_interval, args.floatprecision)
 
-    lipschitz = jnp.asarray(np.atleast_2d(model.lipschitz), dtype=jnp.float32)
+    lipschitz = jnp.asarray(np.atleast_2d(model.lipschitz), dtype=args.floatprecision)
     counts_kernel = _make_counts_kernel(model.step, model.noise.sample_jax, args.num_samples,
                                         partition, lipschitz, actions.max_slice,
                                         coarse_partition, actions.max_slice_coarse, use_coarse)

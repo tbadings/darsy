@@ -1,6 +1,8 @@
 import argparse
 import warnings
 
+import numpy as np
+
 
 def _nonnegative_int(value: str) -> int:
     parsed = int(value)
@@ -100,6 +102,9 @@ def parse_arguments(argv=None):
 
     # Parse arguments
     args = parser.parse_args(argv)
+
+    # Dtype used for all float storage and computation
+    args.floatprecision = np.float64
 
     # Canonicalize alias.
     if args.noise_distr == 'normal':

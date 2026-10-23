@@ -106,7 +106,7 @@ class RectangularForward:
 
         self.coarse_factor = int(coarse_factor)
 
-        lipschitz = jnp.asarray(np.atleast_2d(model.lipschitz), dtype=jnp.float32)
+        lipschitz = jnp.asarray(np.atleast_2d(model.lipschitz), dtype=args.floatprecision)
         batch_frs = _make_forward_reach(model.step, model.noise.sample_jax,
                                         args.frs_num_samples, args.alpha, partition, lipschitz)
 

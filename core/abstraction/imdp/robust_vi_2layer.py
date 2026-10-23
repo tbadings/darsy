@@ -19,6 +19,7 @@ def preprocess_2layer_solution(
     solution: Any,
     states: np.ndarray,
     max_actions: int,
+    float_dtype: Any,
 ) -> Dict[str, Any]:
     """
     Convert the variable-size 2I-MDP structure into padded dense arrays.
@@ -142,11 +143,11 @@ def preprocess_2layer_solution(
 
     full_prob_lb = np.zeros(
         (n_states, max_actions, max_successors),
-        dtype=np.float32,
+        dtype=float_dtype,
     )
     full_prob_ub = np.zeros(
         (n_states, max_actions, max_successors),
-        dtype=np.float32,
+        dtype=float_dtype,
     )
 
     # Local cluster index qpi for each (si,a,spi).
@@ -168,11 +169,11 @@ def preprocess_2layer_solution(
 
     full_prob_lb_coarse = np.zeros(
         (n_states, max_actions, max_clusters),
-        dtype=np.float32,
+        dtype=float_dtype,
     )
     full_prob_ub_coarse = np.zeros(
         (n_states, max_actions, max_clusters),
-        dtype=np.float32,
+        dtype=float_dtype,
     )
 
     # Fine successor indices spi belonging to each (si,a,qpi).
@@ -201,11 +202,11 @@ def preprocess_2layer_solution(
             )
             p_lower_sa = np.asarray(
                 solution.P_lower[s][a],
-                dtype=np.float32,
+                dtype=float_dtype,
             )
             p_upper_sa = np.asarray(
                 solution.P_upper[s][a],
-                dtype=np.float32,
+                dtype=float_dtype,
             )
 
             n_successors_sa = len(successors_sa)
@@ -229,11 +230,11 @@ def preprocess_2layer_solution(
             )
             p_lower_coarse_sa = np.asarray(
                 solution.P_lower_coarse[s][a],
-                dtype=np.float32,
+                dtype=float_dtype,
             )
             p_upper_coarse_sa = np.asarray(
                 solution.P_upper_coarse[s][a],
-                dtype=np.float32,
+                dtype=float_dtype,
             )
 
             n_clusters_sa = len(clusters_sa)
@@ -320,7 +321,7 @@ def preprocess_2layer_solution(
     }
 
 
-def preprocess_2imdp(imdp, states, max_actions):
+def preprocess_2imdp(imdp, states, max_actions, float_dtype):
     """Build solver arrays directly from the rectangular abstraction.
 
     Zero/zero entries are unused window slots. The absorbing successor is
@@ -368,13 +369,13 @@ def preprocess_2imdp(imdp, states, max_actions):
         states=states, action_mask=action_mask,
         successors=np.full(shape_s, -1, dtype=np.int32),
         successors_mask=np.zeros(shape_s, dtype=bool),
-        prob_lb=np.zeros(shape_s, dtype=np.float32),
-        prob_ub=np.zeros(shape_s, dtype=np.float32),
+        prob_lb=np.zeros(shape_s, dtype=float_dtype),
+        prob_ub=np.zeros(shape_s, dtype=float_dtype),
         coarse_constraint_idx=np.full(shape_s, -1, dtype=np.int32),
         coarse_states=np.full(shape_q, -1, dtype=np.int32),
         coarse_mask=np.zeros(shape_q, dtype=bool),
-        prob_lb_coarse=np.zeros(shape_q, dtype=np.float32),
-        prob_ub_coarse=np.zeros(shape_q, dtype=np.float32),
+        prob_lb_coarse=np.zeros(shape_q, dtype=float_dtype),
+        prob_ub_coarse=np.zeros(shape_q, dtype=float_dtype),
         children_indices=np.full(shape_c, -1, dtype=np.int32),
         children_mask=np.zeros(shape_c, dtype=bool),
         n_states=len(states), max_actions=max_actions,
@@ -885,6 +886,7 @@ def lower_value_iteration_2layer(
     sigma: np.ndarray,
     epsilon: float,
     max_iter: int,
+    float_dtype: Any,
 ):
     """Robust lower-bound value iteration."""
 
@@ -915,7 +917,7 @@ def lower_value_iteration_2layer(
     action_mask = jnp.asarray(action_mask_np)
     states = jnp.asarray(states_np)
 
-    V_lower = jnp.asarray(V_lower, dtype=jnp.float32)
+    V_lower = jnp.asarray(V_lower, dtype=float_dtype)
     sigma = jnp.asarray(sigma, dtype=jnp.int32)
 
     for iteration in range(max_iter):
@@ -1029,6 +1031,7 @@ def upper_value_iteration_2layer(
     sigma: np.ndarray,
     epsilon: float,
     max_iter: int,
+    float_dtype: Any,
 ):
     """Upper-bound value iteration for the fixed lower-bound policy."""
 
@@ -1061,7 +1064,7 @@ def upper_value_iteration_2layer(
         dtype=jnp.int32,
     )
 
-    V_upper = jnp.asarray(V_upper, dtype=jnp.float32)
+    V_upper = jnp.asarray(V_upper, dtype=float_dtype)
     sigma = jnp.asarray(sigma, dtype=jnp.int32)
 
     for iteration in range(max_iter):
@@ -1216,6 +1219,7 @@ def robust_max_reach_probability_2layer_jax(
     solver_opts: Any,
     *,
     data_prep: Dict[str, Any] | None = None,
+    float_dtype: Any,
 ):
     """
     Run robust lower and upper value iteration for the 2I-MDP.
@@ -1237,18 +1241,18 @@ def robust_max_reach_probability_2layer_jax(
         if solution is None:
             raise ValueError("Provide either solution or preprocessed data_prep")
         max_actions = max((len(solution.A_id[int(s)]) for s in states), default=0)
-        data_prep = preprocess_2layer_solution(solution, states, max_actions)
+        data_prep = preprocess_2layer_solution(solution, states, max_actions, float_dtype)
     elif not np.array_equal(data_prep['states'], states):
         raise ValueError("data_prep states must match S_not_terminal")
 
     V_lower = np.asarray(
         initial_condition.V_lower,
-        dtype=np.float32,
+        dtype=float_dtype,
     ).copy()
 
     V_upper = np.asarray(
         initial_condition.V_upper,
-        dtype=np.float32,
+        dtype=float_dtype,
     ).copy()
 
     sigma = np.asarray(
@@ -1271,6 +1275,7 @@ def robust_max_reach_probability_2layer_jax(
         sigma=sigma,
         epsilon=epsilon,
         max_iter=max_iter,
+        float_dtype=float_dtype,
     )
 
     # Upper bound / fixed-policy evaluation.
@@ -1280,6 +1285,7 @@ def robust_max_reach_probability_2layer_jax(
         sigma=sigma,
         epsilon=epsilon,
         max_iter=max_iter,
+        float_dtype=float_dtype,
     )
 
     return (

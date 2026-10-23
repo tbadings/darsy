@@ -213,7 +213,7 @@ def prepare_abstraction(args, stamp, name, build):
     t = time.time()
 
     # Create partition of the continuous state space into convex polytope
-    partition = DensePartition(model=model)
+    partition = DensePartition(model=model, float_dtype=args.floatprecision)
 
     s_init, s_init_exists = partition.x2state(model.x0)
     if not s_init_exists:
@@ -270,7 +270,7 @@ def extract_policy_inputs(args, partition, policy, nr_states):
         States without an enabled action contain NaN.
     """
 
-    float_dtype = getattr(args, "floatprecision", np.float32)
+    float_dtype = args.floatprecision
 
     policy = np.asarray(policy)
 
@@ -474,7 +474,7 @@ def extract_product_policy_inputs(args, partition, policy, nr_states):
         actions = np.broadcast_to(actions, (nr_states - 1, *actions.shape[1:]))
     if actions.shape[0] != nr_states - 1:
         raise ValueError('Partition action count does not match physical states')
-    result = np.full((*policy.shape, actions.shape[-1]), np.nan, dtype=float)
+    result = np.full((*policy.shape, actions.shape[-1]), np.nan, dtype=args.floatprecision)
     valid = policy[:-1] >= 0
     ss, zz = np.nonzero(valid)
     if np.any(policy[ss, zz] >= actions.shape[1]):

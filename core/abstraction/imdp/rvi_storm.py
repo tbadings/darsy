@@ -212,7 +212,7 @@ def RVI_STORM(
 
     result = stormpy.check_interval_mdp(model, task, env)
 
-    float_dtype = getattr(args, "floatprecision", np.float32)
+    float_dtype = args.floatprecision
     V = np.asarray(result.get_values(), dtype=float_dtype)
     V = V[: imdp.nr_states]
 

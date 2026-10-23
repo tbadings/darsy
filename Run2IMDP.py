@@ -51,15 +51,15 @@ def solve_2imdp(args, imdp, s0):
     user_param = UserParam(max_iter=10000, Ns=ns-1,
                            Na=max((len(imdp.A_id.get(int(s), [])) for s in enabled), default=0),
                            S_target=target, S_not_terminal=enabled)
-    lower = np.zeros(ns, dtype=np.float32)
+    lower = np.zeros(ns, dtype=args.floatprecision)
     lower[target] = 1.0
     initial = InitialCondition(V_lower=lower, V_upper=lower.copy(),
                                sigma=np.zeros(ns, dtype=np.int32))
-    data_prep = preprocess_2imdp(imdp, enabled, user_param.Na)
+    data_prep = preprocess_2imdp(imdp, enabled, user_param.Na, args.floatprecision)
     with jax.default_device(args.rvi_device):
         V_lower, V_upper, local_policy = robust_max_reach_probability_2layer_jax(
             user_param, initial, None, SolverOpts(tol_VI=1e-6),
-            data_prep=data_prep)
+            data_prep=data_prep, float_dtype=args.floatprecision)
 
     # The solver returns local action indices, while the run pipeline expects
     # global action labels (indices into partition.regions['actions']).
@@ -95,10 +95,11 @@ def solve_2imdp_scLTL(args, imdp, s0, formula):
         if len(imdp.A_id.get(int(s), [])) > 0
     ], dtype=np.int32)
     max_actions = max((len(imdp.A_id[int(s)]) for s in enabled), default=0)
-    data_prep = preprocess_2imdp(imdp, enabled, max_actions)
+    data_prep = preprocess_2imdp(imdp, enabled, max_actions, args.floatprecision)
     with jax.default_device(args.rvi_device):
         lower, upper, local_policy = robust_scLTL_synthesis_2layer_jax(
-            data_prep, dfa, labels, epsilon=1e-6, max_iter=10000
+            data_prep, dfa, labels, float_dtype=args.floatprecision,
+            epsilon=1e-6, max_iter=10000
         )
     policy = np.full_like(local_policy, -1)
     for s in enabled:
