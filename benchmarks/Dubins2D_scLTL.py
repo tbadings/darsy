@@ -90,7 +90,7 @@ class Dubins2D_scLTL(DubinsDynamics2D):
             "((!unsafe) & (!wet | ((!goal) U carpet))) "
             "U (goal & (!unsafe))"
         )
-        # self.specification = ("F(goal) & G(!unsafe)")
+        # self.specification = ("(!unsafe) U goal")
 
         # --------------------------------------------------
         # Initial condition

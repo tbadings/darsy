@@ -35,7 +35,7 @@ class DubinsDynamics2D:
         if args.noise_distr == 'gaussian':
             self.noise = GaussianDistr(np.array([0.15, 0.15])**2) # From stdev to covariance
         elif args.noise_distr == 'triangular':
-            self.noise = TriangularDistr(np.array([0.2, 0.2])) # Halfwidth
+            self.noise = TriangularDistr(np.array([0.02, 0.02])) # Halfwidth
         else:
             raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
@@ -47,8 +47,8 @@ class DubinsDynamics2D:
     def step(self, state, action, noise):
         x, y = state[0], state[1]
         u1, u2 = action[0], action[1]
-        x_next = x + self.tau * u2 * jnp.cos(u1)
-        y_next = y + self.tau * u2 * jnp.sin(u1)
+        x_next = x + self.tau * u2 * jnp.cos(u1) + noise[0]
+        y_next = y + self.tau * u2 * jnp.sin(u1) + noise[1]
         
         state_next = jnp.array([x_next, y_next])
 

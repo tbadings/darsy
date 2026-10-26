@@ -102,9 +102,9 @@ def is_reach_avoid(formula):
     """
     Check whether the specification is exactly
 
-        F(goal) & G(!unsafe)
+        (!unsafe) U goal
 
-    allowing whitespace and reversed conjunct order.
+    allowing whitespace and optional parentheses
     """
 
     # Remove whitespace
@@ -112,10 +112,10 @@ def is_reach_avoid(formula):
 
     # Accepted syntactic representations
     reach_avoid_formulas = {
-        "F(goal)&G(!unsafe)",
-        "G(!unsafe)&F(goal)",
-        "(F(goal))&(G(!unsafe))",
-        "(G(!unsafe))&(F(goal))",
+        "!unsafeUgoal",
+        "(!unsafe)Ugoal",
+        "!unsafeU(goal)",
+        "(!unsafe)U(goal)",
     }
 
     return formula in reach_avoid_formulas

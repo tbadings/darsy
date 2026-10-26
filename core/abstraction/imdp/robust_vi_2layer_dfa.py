@@ -2379,6 +2379,9 @@ def preprocess_2layer_dfa_product(data_prep, dfa, labels, n_base_states=None):
     # Compute successor DFA states
     next_z = transitions[current_z, successor_labels]
 
+    sink_state = n_base_states - 1
+    next_z = np.where(safe == sink_state, current_z, next_z)
+
     # Construct product successor indices
     product["successors"] = np.where(
         mask,
