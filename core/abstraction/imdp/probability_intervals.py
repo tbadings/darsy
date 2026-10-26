@@ -14,7 +14,7 @@ import scipy.stats
 from tqdm import tqdm
 
 from core.abstraction.imdp.forward_reachability import sample_next_states
-from core.abstraction.partition import _compute_linear_strides
+from core.abstraction.partition import _compute_linear_strides, edge_coords
 from core.utils import create_batches, wrap_diff
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ def _make_counts_kernel(step_fn, noise_sample_fn, num_samples, partition, lipsch
                         coarse_partition, max_slice_coarse, use_coarse):
     """JIT kernel: how many sample boxes fall in / overlap each candidate cell (and coarse block)."""
     number_per_dim = jnp.asarray(partition.number_per_dim)
-    cell_width = jnp.asarray(partition.cell_width)
+    edges = partition.edges_padded
     boundary_lb = jnp.asarray(partition.boundary_lb)
     boundary_ub = jnp.asarray(partition.boundary_ub)
     wrap = partition.wrap
@@ -68,7 +68,6 @@ def _make_counts_kernel(step_fn, noise_sample_fn, num_samples, partition, lipsch
 
     offsets = jnp.asarray(_window_offsets(max_slice))
     strides = jnp.asarray(_compute_linear_strides(partition.number_per_dim))
-    slice_width = jnp.asarray(max_slice) * cell_width
     # slice covers the whole circle so nothing can leave
     whole_circle = wrap & (np.asarray(max_slice) >= np.asarray(partition.number_per_dim))
 
@@ -77,6 +76,9 @@ def _make_counts_kernel(step_fn, noise_sample_fn, num_samples, partition, lipsch
         coarse_offsets = jnp.asarray(_window_offsets(max_slice_coarse))
         coarse_strides = jnp.asarray(coarse_partition.coarse_strides)
         coarse_shape = jnp.asarray(coarse_partition.coarse_shape)
+
+    def edge(k):
+        return edge_coords(edges, k, number_per_dim, period, wrap)
 
     def counts(state_min, state_max, action, idx_lb, rng):
         states, next_states = sample_next_states(step_fn, noise_sample_fn, num_samples,
@@ -87,16 +89,17 @@ def _make_counts_kernel(step_fn, noise_sample_fn, num_samples, partition, lipsch
 
         # cells in the FRS
         cell_coords = idx_lb + offsets
-        cell_centers = (cell_coords + 0.5) * cell_width + boundary_lb
+        cell_lb = edge(cell_coords)
+        cell_ub = edge(cell_coords + 1)
+        cell_centers = (cell_lb + cell_ub) / 2
         valid = jnp.all((cell_coords < number_per_dim) | wrap, axis=-1)
-        inside, overlap = _count_boxes(next_states, inflation, cell_centers, cell_width / 2, period, wrap)
+        inside, overlap = _count_boxes(next_states, inflation, cell_centers, (cell_ub - cell_lb) / 2,
+                                       period, wrap)
         succ_ids = _linear_ids(cell_coords, strides, number_per_dim, valid, wrap)
 
         # sink: inflated box out of the FRS
-        slice_lb = idx_lb * cell_width + boundary_lb
-        slice_ub = slice_lb + slice_width
-        slice_lb = jnp.where(wrap, slice_lb, jnp.maximum(slice_lb, boundary_lb))
-        slice_ub = jnp.where(wrap, slice_ub, jnp.minimum(slice_ub, boundary_ub))
+        slice_lb = edge(idx_lb)
+        slice_ub = edge(idx_lb + jnp.asarray(max_slice))
 
         slice_center = (slice_lb + slice_ub) / 2
         slice_half_width = (slice_ub - slice_lb) / 2
@@ -126,8 +129,8 @@ def _make_counts_kernel(step_fn, noise_sample_fn, num_samples, partition, lipsch
         block_valid = block_valid & jnp.all(block_fits, axis=-1)
 
         # block boxes
-        block_lb = boundary_lb + laps * period + block_start * cell_width
-        block_ub = boundary_lb + laps * period + block_end * cell_width
+        block_lb = edge(laps * number_per_dim + block_start)
+        block_ub = edge(laps * number_per_dim + block_end)
 
         block_centers = (block_lb + block_ub) / 2
         block_inside, block_overlap = _count_boxes(next_states, inflation, block_centers,

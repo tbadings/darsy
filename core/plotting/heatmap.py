@@ -1,9 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import seaborn as sns
 import matplotlib as mpl
-from matplotlib.transforms import Affine2D
 from pathlib import Path
 
 
@@ -49,51 +47,27 @@ def heatmap(args, stamp, idx_show, slice_values=None, partition=None,
     mask = counts > 0
     values[mask] = sum_vals[mask] / counts[mask]
 
-    X = np.asarray(partition.regions_per_dim['centers'][i1])
-    Y = (np.asarray(partition.regions_per_dim['centers'][i2])
-         if i2 is not None else np.zeros(1))
-    DF = pd.DataFrame(values[::-1, :], index=Y[::-1], columns=X)
+    # Draw in physical coordinates to keep the size of the cells
+    x_edges = np.asarray(partition.edges[i1])
+    if i2 is not None:
+        y_edges = np.asarray(partition.edges[i2])
+    else:
+        y_edges = np.array([0.0, 1.0])
 
     fig, ax = plt.subplots()
     try:
-        sns.heatmap(DF, xticklabels=False, yticklabels=False, ax=ax)
-        missing_rows, missing_cols = np.where(np.isnan(DF.to_numpy()))
-        for row, col in zip(missing_rows, missing_cols):
-            ax.plot([col, col + 1], [row, row + 1], color='red',
-                    linewidth=0.4, alpha=1.0, zorder=5)
-            ax.plot([col, col + 1], [row + 1, row], color='red',
-                    linewidth=0.4, alpha=1.0, zorder=5)
+        mesh = ax.pcolormesh(x_edges, y_edges, np.ma.masked_invalid(values), cmap=sns.cm.rocket)
+        fig.colorbar(mesh, ax=ax)
 
-        if args.plot_ticks:
-            fmt = lambda v: f'{v:.4g}'
-            x_idx = np.unique(np.linspace(0, len(X)-1, min(6, len(X)), dtype=int))
-            y_idx = np.unique(np.linspace(0, len(Y)-1, min(6, len(Y)), dtype=int))
-            ax.set_xticks(x_idx + 0.5)
-            ax.set_xticklabels([fmt(X[i]) for i in x_idx])
-            if i2 is None:
-                ax.set_yticks([])
-            else:
-                ax.set_yticks(y_idx + 0.5)
-                ax.set_yticklabels([fmt(Y[::-1][i]) for i in y_idx])
-            ax.tick_params(axis='x', labelsize=8, rotation=0)
-            ax.tick_params(axis='y', labelsize=8, rotation=0)
-
+        if not args.plot_ticks:
+            ax.set_xticks([])
+            ax.set_yticks([])
+        if i2 is None:
+            ax.set_yticks([])
         if args.plot_title:
             ax.set_title(f'Heatmap for {args.model} ({filename})')
 
-        # Seaborn draws in cell-index coordinates, not physical coordinates.
-        # x: [physical_lb, physical_ub] -> [0, nx]
-        # y: [physical_lb, physical_ub] -> [ny, 0] (reversed rows).
-        if i2 is not None:
-            lb = np.asarray(partition.boundary_lb, dtype=float)
-            ub = np.asarray(partition.boundary_ub, dtype=float)
-            sx = nx / (ub[i1] - lb[i1])
-            sy = ny / (ub[i2] - lb[i2])
-            ax.roi_physical_transform = (
-                Affine2D().translate(-lb[i1], -ub[i2]).scale(sx, -sy)
-                + ax.transData
-            )
-
+        ax.roi_physical_transform = ax.transData
         if overlay is not None:
             if i2 is None:
                 raise ValueError('Rectangle overlays require two plot dimensions')

@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 from tqdm import tqdm
 
+from core.abstraction.partition import coords_to_grid
 from core.utils import create_batches, wrap_diff
 
 logger = logging.getLogger(__name__)
@@ -26,12 +27,12 @@ def _make_forward_reach(step_fn, noise_sample_fn, num_samples, alpha, partition,
     number_per_dim = jnp.asarray(partition.number_per_dim)
     boundary_lb = jnp.asarray(partition.boundary_lb)
     boundary_ub = jnp.asarray(partition.boundary_ub)
+    edges = partition.edges_padded
 
     pct_lo = 100 * alpha / 2        # lower percentile of the samples
     pct_hi = 100 * (1 - alpha / 2)  # upper percentile of the samples
     period = boundary_ub - boundary_lb
     wrap = partition.wrap
-    norm_scale = number_per_dim / (boundary_ub - boundary_lb)  # state -> grid index
 
     def frs_one_action(state_min, state_max, action, rng):
         # 1. Sample transitions from the current cell under the given action
@@ -56,13 +57,8 @@ def _make_forward_reach(step_fn, noise_sample_fn, num_samples, alpha, partition,
         frs_max += inflation
 
         # 4. Map to discrete indices
-        def continuous_to_grid(coord):
-            raw_idx = jnp.floor((coord - boundary_lb) * norm_scale)
-            clipped_idx = jnp.clip(raw_idx, 0, number_per_dim - 1)
-            return jnp.where(wrap, raw_idx, clipped_idx).astype(jnp.int32)
-
-        idx_lb = continuous_to_grid(frs_min)
-        idx_ub = continuous_to_grid(frs_max)
+        idx_lb = coords_to_grid(edges, frs_min, number_per_dim, boundary_lb, period, wrap)
+        idx_ub = coords_to_grid(edges, frs_max, number_per_dim, boundary_lb, period, wrap)
 
         # 5. Compute the span and put the lower bound into [0, number_per_dim - 1]
         span = jnp.minimum(idx_ub - idx_lb + 1, number_per_dim).astype(jnp.int32)

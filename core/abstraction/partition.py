@@ -64,6 +64,68 @@ def _compute_linear_strides(number_per_dim):
     return strides
 
 
+def subdivide_interval_edges(edges, max_width):
+    '''Split each interval into equal pieces no wider than max_width'''
+    refined = [edges[:1]]
+    for left, right in zip(edges[:-1], edges[1:]):
+        # Small tolerance so e.g. 0.2 / 0.1 counts as 2 pieces, not 3.
+        num_pieces = int(np.ceil((right - left) / max_width - 1e-9))
+        refined.append(np.linspace(left, right, num_pieces + 1)[1:])
+    return np.concatenate(refined)
+
+
+def grid_edges(boundary_lb, boundary_ub, region_boxes, max_cell_width):
+    '''
+    Grid edges per dimension
+    :param region_boxes: Boxes whose faces become grid edges, shape (K, 2, dim).
+    :param max_cell_width: Maximum cell width per dimension.
+    '''
+    edges = []
+    for d in range(len(boundary_lb)):
+        lb = boundary_lb[d]
+        ub = boundary_ub[d]
+        faces = region_boxes[:, :, d].ravel()
+        inner_faces = faces[(faces > lb) & (faces < ub)]
+        coarse_edges = np.unique(np.concatenate([[lb, ub], inner_faces]))
+        edges.append(subdivide_interval_edges(coarse_edges, max_cell_width[d]))
+    return edges
+
+
+def _region_boxes(model):
+    '''All boxes that should align with the grid'''
+    boxes = [
+        np.asarray(model.goal, dtype=float).reshape(-1, 2, model.n),
+        np.asarray(model.critical, dtype=float).reshape(-1, 2, model.n),
+    ]
+    for region in getattr(model, 'regions', {}).values():
+        boxes.append(np.asarray(region, dtype=float).reshape(-1, 2, model.n))
+    return np.concatenate(boxes)
+
+
+def _pad_edges(edges):
+    max_len = max(len(e) for e in edges)
+    padded = np.full((len(edges), max_len), np.inf)
+    for d, e in enumerate(edges):
+        padded[d, :len(e)] = e
+    return padded
+
+
+def edge_coords(edges_padded, k, number_per_dim, period, wrap):
+    laps = jnp.where(wrap, k // number_per_dim, 0)
+    local = jnp.clip(k - laps * number_per_dim, 0, number_per_dim)
+    dims = jnp.arange(edges_padded.shape[0])
+    return edges_padded[dims, local] + laps * period
+
+
+def coords_to_grid(edges_padded, x, number_per_dim, boundary_lb, period, wrap):
+    laps = jnp.where(wrap, jnp.floor((x - boundary_lb) / period), 0).astype(jnp.int32)
+    x_local = x - laps * period
+    # Search each dimension's edges (axis 0 of edges_padded) for that dimension's coordinates (last axis of x)
+    search = jax.vmap(lambda e, v: jnp.searchsorted(e, v, side='right'), in_axes=(0, -1), out_axes=-1)
+    local = jnp.clip(search(edges_padded, x_local) - 1, 0, number_per_dim - 1)
+    return laps * number_per_dim + local
+
+
 def _linear_key_dtype(number_per_dim):
     '''
     Integer dtype able to hold every linear key of this grid. The key indexes the *nominal* grid, so it
@@ -161,17 +223,25 @@ class _HyperrectangularPartition(object):
         self.dimension = model.n
 
         # Retrieve necessary data from the model object
-        self.number_per_dim = model.partition['number_per_dim']
-        # Host-side copy: grid_idx2state runs in plain Python, once per simulation step.
-        self.grid_shape = tuple(int(n) for n in self.number_per_dim)
         partition_boundary = model.partition['boundary']
         self.boundary_lb = partition_boundary[0]
         self.boundary_ub = partition_boundary[1]
         self.wrap = np.asarray(model.wrap, dtype=bool)
+        lb_np = np.asarray(self.boundary_lb, dtype=float_dtype)
+        ub_np = np.asarray(self.boundary_ub, dtype=float_dtype)
 
-        # From the partition boundary, determine where the first grid centers are placed
+        # Maximum cell width per dimension
+        widths = (ub_np - lb_np) / np.asarray(model.partition['number_per_dim'])
+
+        # Grid edges per dimension
+        self.edges = grid_edges(lb_np, ub_np, _region_boxes(model), widths)
+        self.edges_padded = jnp.asarray(_pad_edges(self.edges), dtype=float_dtype)
+        self.number_per_dim = jnp.array([len(e) - 1 for e in self.edges], dtype=int)
+        logger.info(f'- Partition with max cell width {widths.tolist()}')
+        self.grid_shape = tuple(int(n) for n in self.number_per_dim)
+
+        # for plots
         self.cell_width = (partition_boundary[1] - partition_boundary[0]) / self.number_per_dim
-        lb_center = partition_boundary[0] + self.cell_width * 0.5
 
         # Subclass-specific: unit-cube grid indices of the kept cells and their action vectors.
         # actions is (1, num_actions, dim) for the dense grid (broadcast downstream) or
@@ -207,12 +277,18 @@ class _HyperrectangularPartition(object):
         # Unit-cube index tuple for each state (used to map a state ID back to grid coordinates).
         self.state_id2idx = centers_unit
 
-        # Now scale the unit-cube partition to physical coordinates.
-        centers_shifted = centers_unit * self.cell_width + lb_center
+        # Now map the unit-cube grid indices to physical cell bounds via the grid edges.
+        idx_np = np.asarray(centers_unit, dtype=int)
+        lower_np = np.zeros(idx_np.shape, dtype=float_dtype)
+        upper_np = np.zeros(idx_np.shape, dtype=float_dtype)
+        for d in range(self.dimension):
+            lower_np[:, d] = self.edges[d][idx_np[:, d]]
+            upper_np[:, d] = self.edges[d][idx_np[:, d] + 1]
 
+        lower_bounds = jnp.asarray(lower_np)
+        upper_bounds = jnp.asarray(upper_np)
+        centers_shifted = (lower_bounds + upper_bounds) / 2
         region_idxs = jnp.arange(len(centers_shifted))
-        lower_bounds = centers_shifted - self.cell_width / 2
-        upper_bounds = centers_shifted + self.cell_width / 2
 
         logger.debug(f'- Grid points defined (took {(time.time() - t):.3f} sec.)')
 
@@ -239,19 +315,6 @@ class _HyperrectangularPartition(object):
 
         # Sentinel state id used by JAX kernels for coordinates that are not present.
         self.missing_state = int(self.size)
-
-        # Also store the partition bounds per dimension
-        idx_per_dim = [jnp.arange(num) for num in self.number_per_dim]
-        centers_per_dim = [idx_per_dim[i] * self.cell_width[i] + lb_center[i] for i in range(self.dimension)]
-        lower_bounds_per_dim = [jnp.array(centers_per_dim[i] - self.cell_width[i] / 2) for i in range(self.dimension)]
-        upper_bounds_per_dim = [jnp.array(centers_per_dim[i] + self.cell_width[i] / 2) for i in range(self.dimension)]
-
-        self.regions_per_dim = {
-            'centers': centers_per_dim,
-            'idxs': idx_per_dim,
-            'lower_bounds': lower_bounds_per_dim,
-            'upper_bounds': upper_bounds_per_dim,
-        }
 
         self.goal = _compute_goal_regions(
             model.goal, self.regions['lower_bounds'], self.regions['upper_bounds'], region_idxs, self.size
@@ -318,9 +381,11 @@ class _HyperrectangularPartition(object):
         if not in_partition:
             return self.size, False
 
-        # Normalize points to unit-cube grid indices
-        x_norm = np.array(((x - self.boundary_lb) / (self.boundary_ub - self.boundary_lb) * self.number_per_dim) // 1, dtype=int)
-        return self.grid_idx2state(x_norm)
+        # Find the grid index per dimension by searching the grid edges
+        grid_idx = []
+        for d in range(self.dimension):
+            grid_idx.append(np.searchsorted(self.edges[d], x[d], side='right') - 1)
+        return self.grid_idx2state(grid_idx)
 
     def grid_idx2state(self, grid_idx):
         '''Map a unit-cube grid index tuple to its (state ID, exists).'''
