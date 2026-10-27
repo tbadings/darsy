@@ -32,16 +32,77 @@ class Dubins4D(DubinsDynamics4D):
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
         self.partition['number_per_dim'] = 1.35 * np.array([40, 20, 20, 20])
 
-        self.goal = np.array([
-            [[6, 6, -np.pi, -3], [9, 9, np.pi, 3]]
-        ], dtype=float)
+# --------------------------------------------------
+        # Regions of interest
+        # --------------------------------------------------
 
-        self.critical = np.array([
-            [[4, 5, -2 * np.pi, -3], [5, 10, 2 * np.pi, 3]],
-            [[-1, 0, -2 * np.pi, -3], [0, 5, 2 * np.pi, 3]],
-            [[-5, 4, -2 * np.pi, -3], [-1, 5, 2 * np.pi, 3]],
-        ], dtype=float)
+        self.regions = {
+                    "r_goal": np.array([
+                    [[6, 6, -np.pi, -3], [9, 9, np.pi, 3]]
+                    ], dtype=float),
+
+                    "r_unsafe": np.array([
+                    [[4, 5, -2 * np.pi, -3], [5, 10, 2 * np.pi, 3]],
+                    [[-1, 0, -2 * np.pi, -3], [0, 5, 2 * np.pi, 3]],
+                    [[-5, 4, -2 * np.pi, -3], [-1, 5, 2 * np.pi, 3]],
+                    ], dtype=float)
+                }
+
+        # Preserve compatibility with reach-avoid synthesis
+        self.goal = self.regions["r_goal"]
+        self.critical = self.regions["r_unsafe"]
+
+        # --------------------------------------------------
+        # Atomic propositions
+        # --------------------------------------------------
+
+        self.atomic_propositions = [
+            "goal",
+            "unsafe"
+        ]
+
+        # --------------------------------------------------
+        # Labeling function L: R -> 2^AP
+        # --------------------------------------------------
+
+        self.labels = {
+            "r_goal": {"goal"},
+            "r_unsafe": {"unsafe"}
+        }
+
+        # --------------------------------------------------
+        # sc-LTL specification
+        # --------------------------------------------------
+
+        self.specification = (
+            "(!unsafe) U (goal)"
+        )
+        # self.specification = ("(!unsafe) U goal")
+
+        # --------------------------------------------------
+        # Initial condition
+        # --------------------------------------------------        
 
         self.x0 = np.array([-3, 2, 0, 0])
 
-        return
+    def labeling_function(self, r):
+                    """
+                    Return the atomic propositions that hold
+                    in region r.
+            
+                    Parameters
+                    ----------
+                    r : str
+                        Identifier of a region of interest.
+            
+                    Returns
+                    -------
+                    set[str]
+                        Atomic propositions true in region r.
+                    """
+            
+                    if r not in self.regions:
+                        raise ValueError(f"Unknown region: {r}")
+            
+                    return self.labels[r]
+        

@@ -37,18 +37,80 @@ class CartPole(CartPoleDynamics):
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
         self.partition['number_per_dim'] = 20*np.array([12, 8, 6, 10]) + 1
 
-        # Goal: balance the pole upright, close to the center of the track
-        self.goal = np.array([
-            [[1, -3.0, -0.05, -3.0], [2.4, 3.0, 0.05, 3.0]]
-        ], dtype=float)
+        # --------------------------------------------------
+        # Regions of interest
+        # --------------------------------------------------
 
-        self.critical = np.array([
-        ], dtype=float)
+        # Goal: balance the pole upright, close to the center of the track
+
+        self.regions = {
+                    "r_goal": np.array([
+                    [[1, -3.0, -0.05, -3.0], [2.4, 3.0, 0.05, 3.0]]
+                    ], dtype=float),
+
+                    "r_unsafe": np.array([
+                    ], dtype=float)
+                }
+
+        # Preserve compatibility with reach-avoid synthesis
+        self.goal = self.regions["r_goal"]
+        self.critical = self.regions["r_unsafe"]
+
+        # --------------------------------------------------
+        # Atomic propositions
+        # --------------------------------------------------
+
+        self.atomic_propositions = [
+            "goal",
+            "unsafe"
+        ]
+
+        # --------------------------------------------------
+        # Labeling function L: R -> 2^AP
+        # --------------------------------------------------
+
+        self.labels = {
+            "r_goal": {"goal"},
+            "r_unsafe": {"unsafe"}
+        }
+
+        # --------------------------------------------------
+        # sc-LTL specification
+        # --------------------------------------------------
+
+        self.specification = (
+            "(!unsafe) U (goal)"
+        )
+        # self.specification = ("(!unsafe) U goal")
+
+        # --------------------------------------------------
+        # Initial condition
+        # --------------------------------------------------
 
         # Start with the pole tilted away from upright
         self.x0 = np.array([-1, 0.0, 0, 0.0])
 
-        return
+
+    def labeling_function(self, r):
+                    """
+                    Return the atomic propositions that hold
+                    in region r.
+            
+                    Parameters
+                    ----------
+                    r : str
+                        Identifier of a region of interest.
+            
+                    Returns
+                    -------
+                    set[str]
+                        Atomic propositions true in region r.
+                    """
+            
+                    if r not in self.regions:
+                        raise ValueError(f"Unknown region: {r}")
+            
+                    return self.labels[r]
 
     def plot_trajectory_gif(self, trajectory, filename="cartpole_trajectory.gif"):
         """

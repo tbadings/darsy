@@ -64,7 +64,7 @@ def parse_arguments(argv=None):
     parser.add_argument('--solver', type=str, default='jax', choices=['jax', 'storm'],
                         help="Solver backend to use for robust dynamic programming")
     
-    parser.add_argument('--batch_size', type=_positive_int, default=100,
+    parser.add_argument('--batch_size', type=_positive_int, default=1,
                         help="For computing the transition probability intervals, the number of states to process in a vectorized fashion (Warning: increasing this too much drastically increases memory usage for JIT compilation by JAX!)")
     parser.add_argument('--frs_batch_size', type=_positive_int, default=100,
                         help="Number of state regions to process per batch when computing forward reachable sets. Larger values reduce Python-JAX round trips but increase peak memory usage.")

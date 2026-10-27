@@ -9,6 +9,7 @@ from .MountainCar import MountainCar
 from .CartPole import CartPole
 from .Integrators import DoubleIntegrator, DoubleIntegrator_scLTL
 from .Test1D import Test1D
+from .Temperature1D import Temperature1D_reach
 
 
 def create_model(args):
@@ -27,6 +28,7 @@ def create_model(args):
 		'DoubleIntegrator': DoubleIntegrator,
 		'DoubleIntegrator_scLTL': DoubleIntegrator_scLTL,
 		'Test1D': Test1D,
+		'Temperature1D_reach': Temperature1D_reach,
 	}
 
 	model_cls = model_map.get(args.model)
