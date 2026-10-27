@@ -196,6 +196,9 @@ def prepare_abstraction(args, stamp, name, build):
 
     # Check that the specification is scLTL
     formula = getattr(model, "specification", None)
+    regions = getattr(model, "regions", None)
+    labels = getattr(model, "labels", None)
+    atomic_propositions = getattr(model, "atomic_propositions", None)
     
     if formula is None:
         raise ValueError(
@@ -203,6 +206,19 @@ def prepare_abstraction(args, stamp, name, build):
         )
     else:
         reach_avoid = is_reach_avoid(formula)
+        if reach_avoid & ("r_goal" not in regions or "r_unsafe" not in regions):
+            raise ValueError("If the specification is reach-avoid, model.regions must contain 'r_goal' "
+                    "and 'r_unsafe'.")
+        if  "goal" not in atomic_propositions or "unsafe" not in atomic_propositions:
+            raise ValueError("If the specification is reach-avoid, model.atomic_propositions must contain " \
+                    "'goal' and 'unsafe'.")
+        if "r_goal" not in labels or "r_unsafe" not in labels:
+            raise ValueError("If the specification is reach-avoid, model.labels must contain " \
+                                "'goal' and 'unsafe'.")
+        if ("goal" not in labels.get("r_goal", set()) or "unsafe" not in labels.get("r_unsafe", set())):
+            raise ValueError(
+                "self.labels must map 'r_goal' to {'goal'} and 'r_unsafe' to {'unsafe'}."
+            )
         scLTL = is_scLTL(formula)
         if not (reach_avoid | scLTL):
             raise ValueError(

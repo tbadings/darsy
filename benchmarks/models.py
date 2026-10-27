@@ -458,3 +458,35 @@ class Test1DDynamics:
 
         return state_next
 
+class Temperature1DDynamics:
+    def __init__(self, args):
+
+        self.n = 1
+        self.p = 1
+        self.state_variables = ['temperature']
+        self.wrap = jnp.array([False], dtype=bool)
+
+        # State transition matrix
+        self.A  = np.array([[1.021051862145107]])
+        
+        # Input matrix
+        self.B  = np.array([[3.713548482396956e-01]])
+
+        # Affine term
+        self.b  = np.array([-6.736595886434387e-01])
+
+        # Covariance of the process noise
+        if args.noise_distr == 'gaussian':
+            self.noise = GaussianDistr(np.array([0.15])**2) # From stdev to covariance
+        elif args.noise_distr == 'triangular':
+            self.noise = TriangularDistr(np.array([0.15])) # Halfwidth
+        else:
+            raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
+
+        self.lipschitz = np.abs(self.A)
+
+    def step(self, state, action, noise):
+        state_next = jnp.dot(self.A, state) + jnp.dot(self.B, action) + self.b + noise
+
+        return state_next
+

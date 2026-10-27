@@ -24,7 +24,6 @@ from core.pipeline import (
     report,
     report_scLTL,
     is_reach_avoid,
-    is_scLTL,
 )
 
 from RunIMDP import build_imdp
