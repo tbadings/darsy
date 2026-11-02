@@ -26,23 +26,12 @@ from core.pipeline import (
     is_safety,
     safe_state_mask,
     report_safety,
+    save_safety_results,
 )
 
 from RunIMDP import build_imdp
 
 logger = logging.getLogger(__name__)
-
-
-def save_safety_results(args, s0, lower, upper, policy):
-    """Save time-indexed values and global-action policy; index h is remaining horizon."""
-    np.savez_compressed(
-        args.output_dir / 'safety_synthesis.npz',
-        V_lower=lower, V_upper=upper, policy=policy,
-        initial_state=int(s0), horizon=int(args.horizon),
-    )
-    logger.info('Safety horizon=%d, initial state=%d: lower=%.6f, upper=%.6f',
-                args.horizon, s0, lower[args.horizon, s0], upper[args.horizon, s0])
-
 
 
 def build_2imdp(args, model, partition, s_init):
@@ -74,21 +63,6 @@ def solve_2imdp(args, imdp, s0):
     for s in enabled:
         policy[s] = imdp.A_id[int(s)][int(local_policy[s])]
     return V_lower, V_upper, policy
-
-
-def attach_region_data(imdp, model, partition):
-    """Store geometric region memberships and labels, independently of a DFA."""
-    imdp.states_of_interest = {
-        r: np.asarray(mask, dtype=bool).copy()
-        for r, mask in partition.states_of_interest.items()
-    }
-    imdp.partial_region_cells = {
-        r: np.asarray(mask, dtype=bool).copy()
-        for r, mask in partition.partial_region_cells.items()
-    }
-    imdp.region_labels = {r: set(labels) for r, labels in partition.region_labels.items()}
-    imdp.atomic_propositions = list(partition.atomic_propositions)
-    return imdp
 
 
 def solve_2imdp_scLTL(args, imdp, s0, formula):
@@ -135,10 +109,6 @@ if __name__ == '__main__':
         '2IMDP',
         build_2imdp
     )
-
-    # Attach region information, including when loading
-    # an abstraction from a checkpoint.
-    attach_region_data(abstraction, model, partition)
 
     # --------------------------------------------------
     # Initial abstract state

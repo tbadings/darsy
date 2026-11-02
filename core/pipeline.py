@@ -23,6 +23,7 @@ import jax
 import numpy as np
 
 import benchmarks
+from core.abstraction.model import attach_region_data
 from core.abstraction.partition import DensePartition
 from core.jax_config import configure_jax
 from core.utils import add_file_handler, configure_logging
@@ -93,6 +94,17 @@ def save_checkpoint(args, key, model, partition, abstraction):
     with open(ckpt_path, 'wb') as f:
         pickle.dump({'model': model, 'partition': partition, key: abstraction, 'args': args_to_save}, f)
     logger.info('Checkpoint saved.\n')
+
+
+def save_safety_results(args, s0, lower, upper, policy):
+    """Save time-indexed values and global-action policy; index h is remaining horizon."""
+    np.savez_compressed(
+        args.output_dir / 'safety_synthesis.npz',
+        V_lower=lower, V_upper=upper, policy=policy,
+        initial_state=int(s0), horizon=int(args.horizon),
+    )
+    logger.info('Safety horizon=%d, initial state=%d: lower=%.6f, upper=%.6f',
+                args.horizon, s0, lower[args.horizon, s0], upper[args.horizon, s0])
 
 
 def is_safety(formula):
@@ -193,7 +205,7 @@ def prepare_abstraction(args, stamp, name, build):
         if is_safety(getattr(model, 'specification', None)):
             set_safety_horizon(args, model)
         partition = ckpt['partition']
-        abstraction = ckpt[key]
+        abstraction = attach_region_data(ckpt[key], model, partition)
 
         # Name the output folder after the checkpointed model rather than --model, which is
         # typically left unset when a checkpoint is replayed.

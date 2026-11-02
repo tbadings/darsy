@@ -34,12 +34,8 @@ def parse_arguments(argv=None):
 
     # Options
     parser = argparse.ArgumentParser()
-    parser.add_argument('--debug', action=argparse.BooleanOptionalAction, default=False,
-                        help="If True, perform additional checks to debug python")
     parser.add_argument('--seed', type=int, default=0,
                         help="Seed for random number generators (Jax, Numpy)")
-    parser.add_argument('--pAbs_min', type=_probability, default=0.0001,
-                        help="Minimum probability for absorbing states")
     parser.add_argument('--satprob', type=_probability, default=1,
                         help="Lower bound on the satisfaction probability to synthesize a policy for. Once the value "
                              "in the initial state reaches this bound, policy improvement stops and the current "

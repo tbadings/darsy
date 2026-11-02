@@ -18,6 +18,7 @@ from core.abstraction.imdp.robust_vi_2layer_dfa import (
     initial_product_state,
 )
 from core.abstraction.imdp.rvi_jax_dfa import robust_scLTL_synthesis_imdp_jax
+from core.abstraction.model import attach_region_data
 from core.abstraction.partition import CoarsePartition
 from core.automaton.dfa import scLTL_to_DFA
 from core.abstraction.imdp.rvi_jax_safety import safety_imdp_jax, safety_2imdp_jax
@@ -33,40 +34,10 @@ from core.pipeline import (
     is_safety,
     safe_state_mask,
     report_safety,
+    save_safety_results,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def save_safety_results(args, s0, lower, upper, policy):
-    """Save time-indexed values and global-action policy; index h is remaining horizon."""
-    np.savez_compressed(
-        args.output_dir / 'safety_synthesis.npz',
-        V_lower=lower, V_upper=upper, policy=policy,
-        initial_state=int(s0), horizon=int(args.horizon),
-    )
-    logger.info('Safety horizon=%d, initial state=%d: lower=%.6f, upper=%.6f',
-                args.horizon, s0, lower[args.horizon, s0], upper[args.horizon, s0])
-
-
-
-
-def identify_states_of_interest(partition, regions):
-    """Map each named ROI to a mask of fully contained abstract states."""
-    lower_bounds = np.asarray(partition.regions['lower_bounds'])
-    upper_bounds = np.asarray(partition.regions['upper_bounds'])
-    n_states = partition.size
-    states_of_interest = {}
-    for r, rectangles in regions.items():
-        contained = np.zeros(n_states, dtype=bool)
-        for rectangle in np.asarray(rectangles, dtype=float):
-            region_lb, region_ub = rectangle
-            contained |= (
-                np.all(lower_bounds >= region_lb, axis=1)
-                & np.all(upper_bounds <= region_ub, axis=1)
-            )
-        states_of_interest[r] = contained
-    return states_of_interest
 
 
 def build_imdp(args, model, partition, s_init, coarse_factor=1, use_coarse=False):
@@ -98,64 +69,7 @@ def build_imdp(args, model, partition, s_init, coarse_factor=1, use_coarse=False
         Q_id=Q_id,
         P_coarse=P_coarse,
     )
-    # Prefer partition-provided masks/labels, as in Run2IMDP, when available.
-    if hasattr(partition, 'states_of_interest'):
-        imdp.states_of_interest = {
-            r: np.asarray(mask, dtype=bool).copy()
-            for r, mask in partition.states_of_interest.items()
-        }
-    else:
-        imdp.states_of_interest = identify_states_of_interest(partition, model.regions)
-
-    if hasattr(partition, 'partial_region_cells'):
-        imdp.partial_region_cells = {
-            r: np.asarray(mask, dtype=bool).copy()
-            for r, mask in partition.partial_region_cells.items()
-        }
-    if hasattr(partition, 'region_labels'):
-        imdp.region_labels = {
-            r: set(labels) for r, labels in partition.region_labels.items()
-        }
-    else:
-        imdp.region_labels = {
-            r: set(model.labeling_function(r)) for r in model.regions
-        }
-    imdp.atomic_propositions = list(
-        partition.atomic_propositions
-        if hasattr(partition, 'atomic_propositions')
-        else model.atomic_propositions
-    )
-    return imdp
-
-
-def attach_region_data(imdp, model, partition):
-    """Restore region information when loading an abstraction checkpoint."""
-    if hasattr(partition, 'states_of_interest'):
-        imdp.states_of_interest = {
-            r: np.asarray(mask, dtype=bool).copy()
-            for r, mask in partition.states_of_interest.items()
-        }
-    else:
-        imdp.states_of_interest = identify_states_of_interest(partition, model.regions)
-    if hasattr(partition, 'partial_region_cells'):
-        imdp.partial_region_cells = {
-            r: np.asarray(mask, dtype=bool).copy()
-            for r, mask in partition.partial_region_cells.items()
-        }
-    if hasattr(partition, 'region_labels'):
-        imdp.region_labels = {
-            r: set(labels) for r, labels in partition.region_labels.items()
-        }
-    else:
-        imdp.region_labels = {
-            r: set(model.labeling_function(r)) for r in model.regions
-        }
-    imdp.atomic_propositions = list(
-        partition.atomic_propositions
-        if hasattr(partition, 'atomic_propositions')
-        else model.atomic_propositions
-    )
-    return imdp
+    return attach_region_data(imdp, model, partition)
 
 
 def solve_imdp(args, imdp, s0):
@@ -210,7 +124,6 @@ def main():
     model, partition, imdp = prepare_abstraction(
         args, stamp, 'IMDP', build_for_spec
     )
-    attach_region_data(imdp, model, partition)
     formula = getattr(model, 'specification', None)
     if formula is None:
         raise ValueError('The benchmark does not define a specification.')
