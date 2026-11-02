@@ -186,7 +186,7 @@ def RVI_STORM(
     """
     Robust value iteration for interval MDPs using Storm.
 
-    Interface intentionally matches RVI_JAX as closely as possible.
+    Returns (values, global-action policy), like the JAX path of RunIMDP.solve_imdp.
     """
 
     start_time = time.time()
