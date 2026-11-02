@@ -9,7 +9,7 @@ from .MountainCar import MountainCar
 from .CartPole import CartPole
 from .Integrators import DoubleIntegrator, DoubleIntegrator_scLTL
 from .Test1D import Test1D
-from .Temperature1D import Temperature1D_reach
+from .Temperature1D_reach import Temperature1D_reach
 from .Temperature1D_safety import Temperature1D_safety
 from .Temperature4D import Temperature4D
 

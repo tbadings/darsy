@@ -8,8 +8,6 @@ import time
 import jax
 import numpy as np
 
-from core.abstraction.imdp.matlab_2layer_adapter import (
-    InitialCondition, SolverOpts, UserParam)
 from core.abstraction.imdp.robust_vi_2layer import (
     preprocess_2imdp, robust_max_reach_probability_2layer_jax)
 from core.abstraction.imdp.robust_vi_2layer_dfa import (
@@ -31,7 +29,6 @@ from core.pipeline import (
 )
 
 from RunIMDP import build_imdp
-# from export_2imdp_matlab import save_2imdp_matlab
 
 logger = logging.getLogger(__name__)
 
@@ -64,18 +61,12 @@ def solve_2imdp(args, imdp, s0):
                         if not imdp.goal_regions[s] and not imdp.critical_regions[s]
                         and len(imdp.A_id.get(int(s), [])) > 0], dtype=np.int32)
     target = np.flatnonzero(imdp.goal_regions).astype(np.int32)
-    user_param = UserParam(max_iter=10000, Ns=ns-1,
-                           Na=max((len(imdp.A_id.get(int(s), [])) for s in enabled), default=0),
-                           S_target=target, S_not_terminal=enabled)
-    lower = np.zeros(ns, dtype=args.floatprecision)
-    lower[target] = 1.0
-    initial = InitialCondition(V_lower=lower, V_upper=lower.copy(),
-                               sigma=np.zeros(ns, dtype=np.int32))
-    data_prep = preprocess_2imdp(imdp, enabled, user_param.Na, args.floatprecision)
+    max_actions = max((len(imdp.A_id.get(int(s), [])) for s in enabled), default=0)
+    data_prep = preprocess_2imdp(imdp, enabled, max_actions, args.floatprecision)
     with jax.default_device(args.rvi_device):
         V_lower, V_upper, local_policy = robust_max_reach_probability_2layer_jax(
-            user_param, initial, None, SolverOpts(tol_VI=1e-6),
-            data_prep=data_prep, float_dtype=args.floatprecision)
+            data_prep, target, ns, float_dtype=args.floatprecision,
+            epsilon=1e-6, max_iter=10000)
 
     # The solver returns local action indices, while the run pipeline expects
     # global action labels (indices into partition.regions['actions']).
@@ -150,18 +141,6 @@ if __name__ == '__main__':
     attach_region_data(abstraction, model, partition)
 
     # --------------------------------------------------
-    # Export 2IMDP to MATLAB
-    # --------------------------------------------------
-
-    # Export to MATLAB (debug only)
-    # save_2imdp_matlab(
-    #     abstraction,
-    #     filename="results/results_2imdp.mat",
-    #     max_iter=10000,
-    #     tol_VI=1e-6,
-    #     )
-
-    # --------------------------------------------------
     # Initial abstract state
     # --------------------------------------------------
 
@@ -187,7 +166,7 @@ if __name__ == '__main__':
     safety = is_safety(formula)
 
     logger.info(
-        '=== IMDP %s synthesis (solver=%s) ===',
+        '=== 2IMDP %s synthesis (solver=%s) ===',
         'safety' if safety else ('reach-avoid' if reach_avoid else 'scLTL'),
         args.solver
     )

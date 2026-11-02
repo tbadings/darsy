@@ -46,7 +46,7 @@ class Pendulum(PendulumDynamics):
                     "r_unsafe": np.empty((0, 2, 2), dtype=float)
                 }
 
-        # Expose goal/unsafe geometry for the reach-avoid solver interface.
+        # Goal/unsafe geometry for the reach-avoid specification
         self.goal = self.regions["r_goal"]
         self.critical = self.regions["r_unsafe"]
 
@@ -70,7 +70,7 @@ class Pendulum(PendulumDynamics):
         }
 
         # --------------------------------------------------
-        # Temporal-logic specification (reach-avoid or general scLTL)
+        # Reach-avoid specification
         # --------------------------------------------------
 
         self.specification = (

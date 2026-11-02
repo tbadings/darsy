@@ -4,8 +4,9 @@ import jax
 import jax.numpy as jnp
 from core.abstraction.imdp.rvi_jax_dfa import _robust_expectation
 from core.abstraction.imdp.robust_vi_2layer import preprocess_2imdp
-from core.abstraction.imdp.robust_vi_2layer_dfa import (
-    compute_sort_indices, vmap_2layer_over_states,
+from core.abstraction.imdp.robust_vi_2layer import (
+    compute_sort_indices,
+    vmap_2layer_over_states,
 )
 
 
