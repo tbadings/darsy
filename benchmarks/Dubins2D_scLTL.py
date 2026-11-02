@@ -93,7 +93,7 @@ class Dubins2D_scLTL(DubinsDynamics2D):
         # Initial condition
         # --------------------------------------------------
 
-        self.x0 = np.array([-9.0, 9.0])
+        self.x0 = np.array([0.05, 0.95])
 
     def labeling_function(self, r):
             """
