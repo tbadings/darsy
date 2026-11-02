@@ -172,6 +172,13 @@ def compute_probability_intervals(args, model, partition, actions, coarse_partit
     logger.info(f'Union bound over {num_intervals} intervals: per interval beta = {beta_per_interval:.3e}')
     cp_lb, cp_ub = compute_cp_table(args.num_samples, beta_per_interval, args.floatprecision)
 
+    # For multiplicative noise, model.lipschitz must bound the Jacobian
+    # uniformly over the *entire* noise support. For the radially truncated
+    # Gaussian benchmark, this is (1 + model.noise.radius) * abs(model.A).
+    if getattr(model.noise, 'radius', None) is not None:
+        required = (1.0 + float(model.noise.radius)) * np.abs(np.asarray(model.A))
+        if np.any(np.asarray(model.lipschitz) + 1e-12 < required):
+            raise ValueError('Lipschitz matrix does not cover truncated noise support')
     lipschitz = jnp.asarray(np.atleast_2d(model.lipschitz), dtype=args.floatprecision)
     counts_kernel = _make_counts_kernel(model.step, model.noise.sample_jax, args.num_samples,
                                         partition, lipschitz, actions.max_slice,

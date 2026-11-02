@@ -1,448 +1,762 @@
 import numpy as np
+
 import jax
+
 import jax.numpy as jnp
+
 import logging
 
 logger = logging.getLogger(__name__)
 
 def _integ_Gauss(x_lb, x_ub, x, stdev):
-	'''
-	Integrate a univariate Gaussian distribution over a given interval.
 
-	:param x_lb: Lower bound of the interval.
-	:param x_ub: Upper bound of the interval.
-	:param x: Mean of the Gaussian distribution.
-	:param stdev: Standard deviation of the Gaussian distribution.
-	:return:
-	'''
-	eps = 1e-6  # Add tiny epsilon to avoid NaN problems if the Gaussian is a Dirac (i.e., stdev=0) and x_lb or x_ub equals x
-	return jax.scipy.stats.norm.cdf(x_ub, x + eps, stdev) - jax.scipy.stats.norm.cdf(x_lb, x + eps, stdev)
+    '''
 
+    Integrate a univariate Gaussian distribution over a given interval.
 
+    :param x_lb: Lower bound of the interval.
+
+    :param x_ub: Upper bound of the interval.
+
+    :param x: Mean of the Gaussian distribution.
+
+    :param stdev: Standard deviation of the Gaussian distribution.
+
+    :return:
+
+    '''
+
+    eps = 1e-6  # Add tiny epsilon to avoid NaN problems if the Gaussian is a Dirac (i.e., stdev=0) and x_lb or x_ub equals x
+
+    return jax.scipy.stats.norm.cdf(x_ub, x + eps, stdev) - jax.scipy.stats.norm.cdf(x_lb, x + eps, stdev)
 # vmap to compute multivariate Gaussian integral in n dimensions
 _vmap_integ_Gauss = jax.jit(jax.vmap(_integ_Gauss, in_axes=(0, 0, 0, 0), out_axes=0))
+
 _vmap_integ_Gauss_per_dim = jax.jit(jax.vmap(_integ_Gauss, in_axes=(0, 0, 0, None), out_axes=0))
+
 _vmap_integ_Gauss_per_dim_single = jax.jit(jax.vmap(_integ_Gauss, in_axes=(0, 0, None, None), out_axes=0))
 
-
 def _cdf_Triangular(x, mean, halfwidth):
-	'''
-	CDF of a symmetric triangular distribution with support [mean-halfwidth, mean+halfwidth].
-	'''
-	eps = 1e-8  # Prevent division by zero when halfwidth is (close to) zero.
-	h = jnp.maximum(halfwidth, eps)
-	a = mean - h
-	b = mean + h
 
-	left = ((x - a) ** 2) / (2 * h ** 2)
-	right = 1 - ((b - x) ** 2) / (2 * h ** 2)
+    '''
 
-	return jnp.where(
-		x <= a,
-		0.0,
-		jnp.where(x <= mean, left, jnp.where(x <= b, right, 1.0))
-	)
+    CDF of a symmetric triangular distribution with support [mean-halfwidth, mean+halfwidth].
 
+    '''
+
+    eps = 1e-8  # Prevent division by zero when halfwidth is (close to) zero.
+
+    h = jnp.maximum(halfwidth, eps)
+
+    a = mean - h
+
+    b = mean + h
+
+    left = ((x - a) ** 2) / (2 * h ** 2)
+
+    right = 1 - ((b - x) ** 2) / (2 * h ** 2)
+
+    return jnp.where(
+
+        x <= a,
+
+        0.0,
+
+        jnp.where(x <= mean, left, jnp.where(x <= b, right, 1.0))
+
+    )
 
 def _integ_Triangular(x_lb, x_ub, x, halfwidth):
-	'''
-	Integrate a univariate symmetric triangular distribution over a given interval.
-	'''
-	prob = _cdf_Triangular(x_ub, x, halfwidth) - _cdf_Triangular(x_lb, x, halfwidth)
-	return jnp.clip(prob, 0.0, 1.0)
 
+    '''
+
+    Integrate a univariate symmetric triangular distribution over a given interval.
+
+    '''
+
+    prob = _cdf_Triangular(x_ub, x, halfwidth) - _cdf_Triangular(x_lb, x, halfwidth)
+
+    return jnp.clip(prob, 0.0, 1.0)
 
 def _closest_to_mean(x_lb, x_ub, mean_lb, mean_ub):
-	'''
-	Point in [mean_lb, mean_ub] that is closest to the interval midpoint.
-	'''
-	mean = (x_lb + x_ub) / 2
-	return jnp.maximum(jnp.minimum(mean_ub, mean), mean_lb)
 
+    '''
+
+    Point in [mean_lb, mean_ub] that is closest to the interval midpoint.
+
+    '''
+
+    mean = (x_lb + x_ub) / 2
+
+    return jnp.maximum(jnp.minimum(mean_ub, mean), mean_lb)
 
 _vmap_integ_Triangular = jax.jit(jax.vmap(_integ_Triangular, in_axes=(0, 0, 0, 0), out_axes=0))
+
 _vmap_integ_Triangular_per_dim = jax.jit(jax.vmap(_integ_Triangular, in_axes=(0, 0, 0, None), out_axes=0))
+
 _vmap_integ_Triangular_per_dim_single = jax.jit(jax.vmap(_integ_Triangular, in_axes=(0, 0, None, None), out_axes=0))
 
-
 class GaussianDistr(dict):
-	def __init__(self, cov_diag):
-		cov_diag = jnp.asarray(cov_diag, dtype=float)
-		super().__init__(
-			type='Gaussian',
-			mean=jnp.zeros(cov_diag.shape[0], dtype=float),
-			cov=jnp.diag(cov_diag),
-			cov_diag=cov_diag,
-			stdev=jnp.sqrt(cov_diag),
-			support_radius=4 * jnp.sqrt(cov_diag), # 3 standard deviations cover 99.9% of the probability mass for a univariate Gaussian
-		)
 
-	def sample(self, size=None, rng=None):
-		rng = np.random if rng is None else rng
-		return rng.multivariate_normal(self['mean'], self['cov'], size=size)
+    def __init__(self, cov_diag):
 
-	def sample_jax(self, rng, shape=()):
-		mean = jnp.asarray(self['mean'])
-		stdev = jnp.asarray(self['stdev'])
-		if isinstance(shape, int):
-			shape = (shape,)
-		sample_shape = tuple(shape) + (mean.shape[0],)
-		return mean + stdev * jax.random.normal(rng, shape=sample_shape)
+        cov_diag = jnp.asarray(cov_diag, dtype=float)
 
-	def set_partition_probs(self, num_cells):
-		'''
-		Partition the truncated support into a grid of cells and compute the joint
-		probability mass of each cell.
+        super().__init__(
 
-		Each dimension i is divided into num_cells[i] equal-width intervals within
-		[mean[i] - support_radius[i], mean[i] + support_radius[i]] (3 standard deviations).
-		The full grid contains prod(num_cells) cells. Joint probabilities are the product
-		of per-dimension probabilities (independent dimensions).
-		The probability mass outside the truncated support is stored as the remainder.
+            type='Gaussian',
 
-		:param num_cells: Array of integers of length n_dims, number of cells per dimension.
-		:return:
-			- cells:     array of shape (prod(num_cells), n_dims, 2) with [lb, ub] per dim per cell.
-			- probs:     array of shape (prod(num_cells),) with joint probability mass per cell.
-			- remainder: scalar, total probability mass not captured by any cell.
-		'''
+            mean=jnp.zeros(cov_diag.shape[0], dtype=float),
 
-		print(f'- Define noise partition with {num_cells} cells')
+            cov=jnp.diag(cov_diag),
 
-		mean = self['mean']
-		stdev = self['stdev']
-		support_radius = self['support_radius']
-		n_dims = len(stdev)
-		has_noise = np.asarray(stdev) > 0
+            cov_diag=cov_diag,
 
-		per_dim_cells = []
-		per_dim_probs = []
-		actual_num_cells = []
+            stdev=jnp.sqrt(cov_diag),
 
-		for i in range(n_dims):
-			if has_noise[i]:
-				edges = jnp.linspace(mean[i] - support_radius[i], mean[i] + support_radius[i], num_cells[i] + 1)
-				lbs = edges[:-1]
-				ubs = edges[1:]
-				p = _vmap_integ_Gauss_per_dim_single(lbs, ubs, mean[i], stdev[i])
-				actual_num_cells.append(num_cells[i])
-			else:
-				lbs = jnp.array([mean[i]])
-				ubs = jnp.array([mean[i]])
-				p = jnp.array([1.0])
-				actual_num_cells.append(1)
-			per_dim_cells.append(jnp.stack([lbs, ubs], axis=1))
-			per_dim_probs.append(p)
+            support_radius=4 * jnp.sqrt(cov_diag), # 3 standard deviations cover 99.9% of the probability mass for a univariate Gaussian
 
-		# Build flat index arrays for the Cartesian product
-		index_grids = np.meshgrid(*[np.arange(n) for n in actual_num_cells], indexing='ij')
-		flat_idx = [g.reshape(-1) for g in index_grids]
+        )
 
-		# cells[j, i, :] = per-dim bounds of dimension i for cell j
-		all_cells = jnp.stack([per_dim_cells[i][flat_idx[i]] for i in range(n_dims)], axis=1)
+    def sample(self, size=None, rng=None):
 
-		# joint probability = product of per-dimension probabilities
-		all_probs = per_dim_probs[0][flat_idx[0]]
-		for i in range(1, n_dims):
-			all_probs = all_probs * per_dim_probs[i][flat_idx[i]]
+        rng = np.random if rng is None else rng
 
-		self.partition = {
-			"cells": all_cells,
-			"probs": all_probs,
-			"remainder": 1.0 - jnp.sum(all_probs)
-		}
+        return rng.multivariate_normal(self['mean'], self['cov'], size=size)
 
-		logger.info(
-			'- Noise partition: %d cells total  |  remainder=%.4f',
-			len(all_probs),
-			float(1.0 - jnp.sum(all_probs)),
-		)
+    def sample_jax(self, rng, shape=()):
 
-		return 
-	
-	def prob_minmax(self, x_lb, x_ub, mean_lb, mean_ub, wrap_array):
-		'''
-		Compute the min/max integral of a multivariate Gaussian distribution over a given interval, where the mean of the Gaussian lies in [mean_lb, mean_ub].
+        mean = jnp.asarray(self['mean'])
 
-		:param x_lb: Lower bound of the interval.
-		:param x_ub: Upper bound of the interval.
-		:param mean_lb: Lower bound of the mean of the Gaussian distribution.
-		:param mean_ub: Upper bound of the mean of the Gaussian distribution.
-		:param wrap_array: Wrap at the indices where this array is True.
-		:return: Min/max probabilities.
-		'''
+        stdev = jnp.asarray(self['stdev'])
 
-		# Determine point closest to mean of region over which to integrate
-		closest_to_mean = _closest_to_mean(x_lb, x_ub, mean_lb, mean_ub)
+        if isinstance(shape, int):
 
-		# Maximum probability is the product
-		p_max = jnp.prod(_vmap_integ_Gauss(x_lb, x_ub, closest_to_mean, self['stdev']) * ~wrap_array + 1 * wrap_array)
+            shape = (shape,)
 
-		p1 = _vmap_integ_Gauss(x_lb, x_ub, mean_lb, self['stdev']) * ~wrap_array + 1 * wrap_array
-		p2 = _vmap_integ_Gauss(x_lb, x_ub, mean_ub, self['stdev']) * ~wrap_array + 1 * wrap_array
-		p_min = jnp.prod(jnp.minimum(p1, p2))
+        sample_shape = tuple(shape) + (mean.shape[0],)
 
-		return jnp.array([p_min, p_max])
-	
-	def prob_minmax_per_dim(self, n, wrap, x_lb_per_dim, x_ub_per_dim, mean_lb, mean_ub, state_space_size):
-		'''
-		Compute the min/max integral of a multivariate Gaussian distribution over a given interval, where the mean of the Gaussian lies in [mean_lb, mean_ub].
-		Exploit rectangular partition to compute much fewer Gaussian integrals
+        return mean + stdev * jax.random.normal(rng, shape=sample_shape)
 
-		:param n: Dimension of the state space.
-		:param wrap: Wrap at the indices where this array is True.
-		:param x_lb_per_dim: Lower bound of the interval per dimension.
-		:param x_ub_per_dim: Upper bound of the interval per dimension.
-		:param mean_lb: Lower bound of the mean of the Gaussian distribution.
-		:param mean_ub: Upper bound of the mean of the Gaussian distribution.
-		:param state_space_size: Size of the state space per dimension (i.e., size of the "state space box")
-		:return:
-			- Min/max probabilities.
-			- Lower bound probabilities.
-			- Upper bound probabilities.
-		'''
+    def set_partition_probs(self, num_cells):
 
-		probs = []
-		prob_low = []
-		prob_high = []
+        '''
 
-		for i in range(n):
-			x_lb = x_lb_per_dim[i]
-			x_ub = x_ub_per_dim[i]
-			closest_to_mean = _closest_to_mean(x_lb, x_ub, mean_lb[i], mean_ub[i])
+        Partition the truncated support into a grid of cells and compute the joint
 
-			if wrap[i]:
-				# Compute shifts without building intermediate array
-				shift_neg = -state_space_size[i]
-				shift_pos = state_space_size[i]
+        probability mass of each cell.
 
-				res_neg = _vmap_integ_Gauss_per_dim(
-					x_lb + shift_neg,
-					x_ub + shift_neg,
-					_closest_to_mean(x_lb + shift_neg, x_ub + shift_neg, mean_lb[i], mean_ub[i]),
-					self['stdev'][i])
-				res_zero = _vmap_integ_Gauss_per_dim(
-					x_lb,
-					x_ub,
-					closest_to_mean,
-					self['stdev'][i])
-				res_pos = _vmap_integ_Gauss_per_dim(
-					x_lb + shift_pos,
-					x_ub + shift_pos,
-					_closest_to_mean(x_lb + shift_pos, x_ub + shift_pos, mean_lb[i], mean_ub[i]),
-					self['stdev'][i])
-				p_max = res_neg + res_zero + res_pos
+        Each dimension i is divided into num_cells[i] equal-width intervals within
 
-				res1_neg = _vmap_integ_Gauss_per_dim_single(x_lb + shift_neg, x_ub + shift_neg, mean_lb[i], self['stdev'][i])
-				res2_neg = _vmap_integ_Gauss_per_dim_single(x_lb + shift_neg, x_ub + shift_neg, mean_ub[i], self['stdev'][i])
-				res1_zero = _vmap_integ_Gauss_per_dim_single(x_lb, x_ub, mean_lb[i], self['stdev'][i])
-				res2_zero = _vmap_integ_Gauss_per_dim_single(x_lb, x_ub, mean_ub[i], self['stdev'][i])
-				res1_pos = _vmap_integ_Gauss_per_dim_single(x_lb + shift_pos, x_ub + shift_pos, mean_lb[i], self['stdev'][i])
-				res2_pos = _vmap_integ_Gauss_per_dim_single(x_lb + shift_pos, x_ub + shift_pos, mean_ub[i], self['stdev'][i])
+        [mean[i] - support_radius[i], mean[i] + support_radius[i]] (3 standard deviations).
 
-				p_min = jnp.minimum(res1_neg, res2_neg) + jnp.minimum(res1_zero, res2_zero) + jnp.minimum(res1_pos, res2_pos)
-			else:
-				p_max = _vmap_integ_Gauss_per_dim(x_lb, x_ub, closest_to_mean, self['stdev'][i])
-				p_min = jnp.minimum(_vmap_integ_Gauss_per_dim_single(x_lb, x_ub, mean_lb[i], self['stdev'][i]),
-									_vmap_integ_Gauss_per_dim_single(x_lb, x_ub, mean_ub[i], self['stdev'][i]))
+        The full grid contains prod(num_cells) cells. Joint probabilities are the product
 
-			probs.append(jnp.vstack([p_min, p_max]).T)
-			prob_low.append(p_min)
-			prob_high.append(p_max)
+        of per-dimension probabilities (independent dimensions).
 
-		return probs, prob_low, prob_high
+        The probability mass outside the truncated support is stored as the remainder.
 
+        :param num_cells: Array of integers of length n_dims, number of cells per dimension.
+
+        :return:
+
+            - cells:     array of shape (prod(num_cells), n_dims, 2) with [lb, ub] per dim per cell.
+
+            - probs:     array of shape (prod(num_cells),) with joint probability mass per cell.
+
+            - remainder: scalar, total probability mass not captured by any cell.
+
+        '''
+
+        print(f'- Define noise partition with {num_cells} cells')
+
+        mean = self['mean']
+
+        stdev = self['stdev']
+
+        support_radius = self['support_radius']
+
+        n_dims = len(stdev)
+
+        has_noise = np.asarray(stdev) > 0
+
+        per_dim_cells = []
+
+        per_dim_probs = []
+
+        actual_num_cells = []
+
+        for i in range(n_dims):
+
+            if has_noise[i]:
+
+                edges = jnp.linspace(mean[i] - support_radius[i], mean[i] + support_radius[i], num_cells[i] + 1)
+
+                lbs = edges[:-1]
+
+                ubs = edges[1:]
+
+                p = _vmap_integ_Gauss_per_dim_single(lbs, ubs, mean[i], stdev[i])
+
+                actual_num_cells.append(num_cells[i])
+
+            else:
+
+                lbs = jnp.array([mean[i]])
+
+                ubs = jnp.array([mean[i]])
+
+                p = jnp.array([1.0])
+
+                actual_num_cells.append(1)
+
+            per_dim_cells.append(jnp.stack([lbs, ubs], axis=1))
+
+            per_dim_probs.append(p)
+# Build flat index arrays for the Cartesian product
+        index_grids = np.meshgrid(*[np.arange(n) for n in actual_num_cells], indexing='ij')
+
+        flat_idx = [g.reshape(-1) for g in index_grids]
+# cells[j, i, :] = per-dim bounds of dimension i for cell j
+        all_cells = jnp.stack([per_dim_cells[i][flat_idx[i]] for i in range(n_dims)], axis=1)
+# joint probability = product of per-dimension probabilities
+        all_probs = per_dim_probs[0][flat_idx[0]]
+
+        for i in range(1, n_dims):
+
+            all_probs = all_probs * per_dim_probs[i][flat_idx[i]]
+
+        self.partition = {
+
+            "cells": all_cells,
+
+            "probs": all_probs,
+
+            "remainder": 1.0 - jnp.sum(all_probs)
+
+        }
+
+        logger.info(
+
+            '- Noise partition: %d cells total  |  remainder=%.4f',
+
+            len(all_probs),
+
+            float(1.0 - jnp.sum(all_probs)),
+
+        )
+
+        return 
+
+    def prob_minmax(self, x_lb, x_ub, mean_lb, mean_ub, wrap_array):
+
+        '''
+
+        Compute the min/max integral of a multivariate Gaussian distribution over a given interval, where the mean of the Gaussian lies in [mean_lb, mean_ub].
+
+        :param x_lb: Lower bound of the interval.
+
+        :param x_ub: Upper bound of the interval.
+
+        :param mean_lb: Lower bound of the mean of the Gaussian distribution.
+
+        :param mean_ub: Upper bound of the mean of the Gaussian distribution.
+
+        :param wrap_array: Wrap at the indices where this array is True.
+
+        :return: Min/max probabilities.
+
+        '''
+# Determine point closest to mean of region over which to integrate
+        closest_to_mean = _closest_to_mean(x_lb, x_ub, mean_lb, mean_ub)
+# Maximum probability is the product
+        p_max = jnp.prod(_vmap_integ_Gauss(x_lb, x_ub, closest_to_mean, self['stdev']) * ~wrap_array + 1 * wrap_array)
+
+        p1 = _vmap_integ_Gauss(x_lb, x_ub, mean_lb, self['stdev']) * ~wrap_array + 1 * wrap_array
+
+        p2 = _vmap_integ_Gauss(x_lb, x_ub, mean_ub, self['stdev']) * ~wrap_array + 1 * wrap_array
+
+        p_min = jnp.prod(jnp.minimum(p1, p2))
+
+        return jnp.array([p_min, p_max])
+
+    def prob_minmax_per_dim(self, n, wrap, x_lb_per_dim, x_ub_per_dim, mean_lb, mean_ub, state_space_size):
+
+        '''
+
+        Compute the min/max integral of a multivariate Gaussian distribution over a given interval, where the mean of the Gaussian lies in [mean_lb, mean_ub].
+
+        Exploit rectangular partition to compute much fewer Gaussian integrals
+
+        :param n: Dimension of the state space.
+
+        :param wrap: Wrap at the indices where this array is True.
+
+        :param x_lb_per_dim: Lower bound of the interval per dimension.
+
+        :param x_ub_per_dim: Upper bound of the interval per dimension.
+
+        :param mean_lb: Lower bound of the mean of the Gaussian distribution.
+
+        :param mean_ub: Upper bound of the mean of the Gaussian distribution.
+
+        :param state_space_size: Size of the state space per dimension (i.e., size of the "state space box")
+
+        :return:
+
+            - Min/max probabilities.
+
+            - Lower bound probabilities.
+
+            - Upper bound probabilities.
+
+        '''
+
+        probs = []
+
+        prob_low = []
+
+        prob_high = []
+
+        for i in range(n):
+
+            x_lb = x_lb_per_dim[i]
+
+            x_ub = x_ub_per_dim[i]
+
+            closest_to_mean = _closest_to_mean(x_lb, x_ub, mean_lb[i], mean_ub[i])
+
+            if wrap[i]:
+# Compute shifts without building intermediate array
+                shift_neg = -state_space_size[i]
+
+                shift_pos = state_space_size[i]
+
+                res_neg = _vmap_integ_Gauss_per_dim(
+
+                    x_lb + shift_neg,
+
+                    x_ub + shift_neg,
+
+                    _closest_to_mean(x_lb + shift_neg, x_ub + shift_neg, mean_lb[i], mean_ub[i]),
+
+                    self['stdev'][i])
+
+                res_zero = _vmap_integ_Gauss_per_dim(
+
+                    x_lb,
+
+                    x_ub,
+
+                    closest_to_mean,
+
+                    self['stdev'][i])
+
+                res_pos = _vmap_integ_Gauss_per_dim(
+
+                    x_lb + shift_pos,
+
+                    x_ub + shift_pos,
+
+                    _closest_to_mean(x_lb + shift_pos, x_ub + shift_pos, mean_lb[i], mean_ub[i]),
+
+                    self['stdev'][i])
+
+                p_max = res_neg + res_zero + res_pos
+
+                res1_neg = _vmap_integ_Gauss_per_dim_single(x_lb + shift_neg, x_ub + shift_neg, mean_lb[i], self['stdev'][i])
+
+                res2_neg = _vmap_integ_Gauss_per_dim_single(x_lb + shift_neg, x_ub + shift_neg, mean_ub[i], self['stdev'][i])
+
+                res1_zero = _vmap_integ_Gauss_per_dim_single(x_lb, x_ub, mean_lb[i], self['stdev'][i])
+
+                res2_zero = _vmap_integ_Gauss_per_dim_single(x_lb, x_ub, mean_ub[i], self['stdev'][i])
+
+                res1_pos = _vmap_integ_Gauss_per_dim_single(x_lb + shift_pos, x_ub + shift_pos, mean_lb[i], self['stdev'][i])
+
+                res2_pos = _vmap_integ_Gauss_per_dim_single(x_lb + shift_pos, x_ub + shift_pos, mean_ub[i], self['stdev'][i])
+
+                p_min = jnp.minimum(res1_neg, res2_neg) + jnp.minimum(res1_zero, res2_zero) + jnp.minimum(res1_pos, res2_pos)
+
+            else:
+
+                p_max = _vmap_integ_Gauss_per_dim(x_lb, x_ub, closest_to_mean, self['stdev'][i])
+
+                p_min = jnp.minimum(_vmap_integ_Gauss_per_dim_single(x_lb, x_ub, mean_lb[i], self['stdev'][i]),
+
+                                    _vmap_integ_Gauss_per_dim_single(x_lb, x_ub, mean_ub[i], self['stdev'][i]))
+
+            probs.append(jnp.vstack([p_min, p_max]).T)
+
+            prob_low.append(p_min)
+
+            prob_high.append(p_max)
+
+        return probs, prob_low, prob_high
 
 class TriangularDistr(dict):
-	def __init__(self, halfwidth):
-		halfwidth = jnp.asarray(halfwidth, dtype=float)
-		super().__init__(
-			type='Triangular',
-			mean=jnp.zeros(halfwidth.shape[0], dtype=float),
-			halfwidth=halfwidth,
-			support_radius=halfwidth, # Support radius of triangular distribution is equal to halfwidth
-		)
-		
-	def sample(self, size=None, rng=None):
-		rng = np.random if rng is None else rng
-		mean = np.asarray(self['mean'])
-		halfwidth = np.asarray(self['halfwidth'])
-		nonzero = halfwidth > 0
-		halfwidth_safe = np.where(nonzero, halfwidth, 1.0)
 
-		if size is None:
-			sample_size = mean.shape
-		elif np.isscalar(size):
-			sample_size = (int(size), mean.shape[0])
-		else:
-			sample_size = tuple(size) + (mean.shape[0],)
+    def __init__(self, halfwidth):
 
-		sampled = rng.triangular(mean - halfwidth_safe, mean, mean + halfwidth_safe, size=sample_size)
-		return np.where(nonzero, sampled, mean)
+        halfwidth = jnp.asarray(halfwidth, dtype=float)
 
-	def sample_jax(self, rng, shape=()):
-		mean = jnp.asarray(self['mean'])
-		halfwidth = jnp.asarray(self['halfwidth'])
-		if isinstance(shape, int):
-			shape = (shape,)
-		sample_shape = tuple(shape) + (mean.shape[0],)
-		rng1, rng2 = jax.random.split(rng)
-		u1 = jax.random.uniform(rng1, shape=sample_shape)
-		u2 = jax.random.uniform(rng2, shape=sample_shape)
-		return mean + halfwidth * (u1 - u2)
+        super().__init__(
 
-	def set_partition_probs(self, num_cells):
-		'''
-		Partition the support into a grid of cells and compute the joint probability
-		mass of each cell.
+            type='Triangular',
 
-		Each dimension i is divided into num_cells[i] equal-width intervals within
-		[mean[i] - halfwidth[i], mean[i] + halfwidth[i]]. The full grid contains
-		prod(num_cells) cells. Joint probabilities are the product of per-dimension
-		probabilities (independent dimensions).
+            mean=jnp.zeros(halfwidth.shape[0], dtype=float),
 
-		:param num_cells: Array of integers of length n_dims, number of cells per dimension.
-		:return:
-			- cells:     array of shape (prod(num_cells), n_dims, 2) with [lb, ub] per dim per cell.
-			- probs:     array of shape (prod(num_cells),) with joint probability mass per cell.
-			- remainder: scalar, total probability mass not captured by any cell
-			             (theoretically zero; captures floating-point residuals).
-		'''
-		mean = self['mean']
-		halfwidth = self['halfwidth']
-		n_dims = len(halfwidth)
-		has_noise = np.asarray(halfwidth) > 0
+            halfwidth=halfwidth,
 
-		per_dim_cells = []
-		per_dim_probs = []
-		actual_num_cells = []
+            support_radius=halfwidth, # Support radius of triangular distribution is equal to halfwidth
 
-		for i in range(n_dims):
-			if has_noise[i]:
-				edges = jnp.linspace(mean[i] - halfwidth[i], mean[i] + halfwidth[i], num_cells[i] + 1)
-				lbs = edges[:-1]
-				ubs = edges[1:]
-				p = _vmap_integ_Triangular_per_dim_single(lbs, ubs, mean[i], halfwidth[i])
-				actual_num_cells.append(num_cells[i])
-			else:
-				lbs = jnp.array([mean[i]])
-				ubs = jnp.array([mean[i]])
-				p = jnp.array([1.0])
-				actual_num_cells.append(1)
-			per_dim_cells.append(jnp.stack([lbs, ubs], axis=1))
-			per_dim_probs.append(p)
+        )
 
-		# Build flat index arrays for the Cartesian product
-		index_grids = np.meshgrid(*[np.arange(n) for n in actual_num_cells], indexing='ij')
-		flat_idx = [g.reshape(-1) for g in index_grids]
+    def sample(self, size=None, rng=None):
 
-		# cells[j, i, :] = per-dim bounds of dimension i for cell j
-		all_cells = jnp.stack([per_dim_cells[i][flat_idx[i]] for i in range(n_dims)], axis=1)
+        rng = np.random if rng is None else rng
 
-		# joint probability = product of per-dimension probabilities
-		all_probs = per_dim_probs[0][flat_idx[0]]
-		for i in range(1, n_dims):
-			all_probs = all_probs * per_dim_probs[i][flat_idx[i]]
+        mean = np.asarray(self['mean'])
 
-		self.partition = {
-			"cells": all_cells,
-			"probs": all_probs,
-			"remainder": 1.0 - jnp.sum(all_probs)
-		}
+        halfwidth = np.asarray(self['halfwidth'])
 
-		return
+        nonzero = halfwidth > 0
 
-	def prob_minmax(self, x_lb, x_ub, mean_lb, mean_ub, wrap_array):
-		'''
-		Compute the min/max integral of a multivariate triangular distribution over a given interval,
-		where the mean of the triangular distribution lies in [mean_lb, mean_ub].
+        halfwidth_safe = np.where(nonzero, halfwidth, 1.0)
 
-		:param x_lb: Lower bound of the interval.
-		:param x_ub: Upper bound of the interval.
-		:param mean_lb: Lower bound of the mean of the triangular distribution.
-		:param mean_ub: Upper bound of the mean of the triangular distribution.
-		:param wrap_array: Wrap at the indices where this array is True.
-		:return: Min/max probabilities.
-		'''
+        if size is None:
 
-		# Determine point closest to mean of region over which to integrate.
-		closest_to_mean = _closest_to_mean(x_lb, x_ub, mean_lb, mean_ub)
+            sample_size = mean.shape
 
-		# Maximum probability is the product.
-		p_max = jnp.prod(_vmap_integ_Triangular(x_lb, x_ub, closest_to_mean, self['halfwidth']) * ~wrap_array + 1 * wrap_array)
+        elif np.isscalar(size):
 
-		p1 = _vmap_integ_Triangular(x_lb, x_ub, mean_lb, self['halfwidth']) * ~wrap_array + 1 * wrap_array
-		p2 = _vmap_integ_Triangular(x_lb, x_ub, mean_ub, self['halfwidth']) * ~wrap_array + 1 * wrap_array
-		p_min = jnp.prod(jnp.minimum(p1, p2))
+            sample_size = (int(size), mean.shape[0])
 
-		return jnp.array([p_min, p_max])
+        else:
 
-	def prob_minmax_per_dim(self, n, wrap, x_lb_per_dim, x_ub_per_dim, mean_lb, mean_ub, state_space_size):
-		'''
-		Compute the min/max integral of a multivariate triangular distribution over a given interval,
-		where the mean of the triangular distribution lies in [mean_lb, mean_ub].
-		Exploit rectangular partition to compute much fewer triangular integrals.
+            sample_size = tuple(size) + (mean.shape[0],)
 
-		:param n: Dimension of the state space.
-		:param wrap: Wrap at the indices where this array is True.
-		:param x_lb_per_dim: Lower bound of the interval per dimension.
-		:param x_ub_per_dim: Upper bound of the interval per dimension.
-		:param mean_lb: Lower bound of the mean of the triangular distribution.
-		:param mean_ub: Upper bound of the mean of the triangular distribution.
-		:param state_space_size: Size of the state space per dimension (i.e., size of the "state space box")
-		:return:
-			- Min/max probabilities.
-			- Lower bound probabilities.
-			- Upper bound probabilities.
-		'''
+        sampled = rng.triangular(mean - halfwidth_safe, mean, mean + halfwidth_safe, size=sample_size)
 
-		probs = []
-		prob_low = []
-		prob_high = []
+        return np.where(nonzero, sampled, mean)
 
-		for i in range(n):
-			x_lb = x_lb_per_dim[i]
-			x_ub = x_ub_per_dim[i]
-			closest_to_mean = _closest_to_mean(x_lb, x_ub, mean_lb[i], mean_ub[i])
+    def sample_jax(self, rng, shape=()):
 
-			if wrap[i]:
-				shift_neg = -state_space_size[i]
-				shift_pos = state_space_size[i]
+        mean = jnp.asarray(self['mean'])
 
-				res_neg = _vmap_integ_Triangular_per_dim(
-					x_lb + shift_neg,
-					x_ub + shift_neg,
-					_closest_to_mean(x_lb + shift_neg, x_ub + shift_neg, mean_lb[i], mean_ub[i]),
-					self['halfwidth'][i])
-				res_zero = _vmap_integ_Triangular_per_dim(
-					x_lb,
-					x_ub,
-					closest_to_mean,
-					self['halfwidth'][i])
-				res_pos = _vmap_integ_Triangular_per_dim(
-					x_lb + shift_pos,
-					x_ub + shift_pos,
-					_closest_to_mean(x_lb + shift_pos, x_ub + shift_pos, mean_lb[i], mean_ub[i]),
-					self['halfwidth'][i])
-				p_max = res_neg + res_zero + res_pos
+        halfwidth = jnp.asarray(self['halfwidth'])
 
-				res1_neg = _vmap_integ_Triangular_per_dim_single(x_lb + shift_neg, x_ub + shift_neg, mean_lb[i], self['halfwidth'][i])
-				res2_neg = _vmap_integ_Triangular_per_dim_single(x_lb + shift_neg, x_ub + shift_neg, mean_ub[i], self['halfwidth'][i])
-				res1_zero = _vmap_integ_Triangular_per_dim_single(x_lb, x_ub, mean_lb[i], self['halfwidth'][i])
-				res2_zero = _vmap_integ_Triangular_per_dim_single(x_lb, x_ub, mean_ub[i], self['halfwidth'][i])
-				res1_pos = _vmap_integ_Triangular_per_dim_single(x_lb + shift_pos, x_ub + shift_pos, mean_lb[i], self['halfwidth'][i])
-				res2_pos = _vmap_integ_Triangular_per_dim_single(x_lb + shift_pos, x_ub + shift_pos, mean_ub[i], self['halfwidth'][i])
+        if isinstance(shape, int):
 
-				p_min = jnp.minimum(res1_neg, res2_neg) + jnp.minimum(res1_zero, res2_zero) + jnp.minimum(res1_pos, res2_pos)
-			else:
-				p_max = _vmap_integ_Triangular_per_dim(x_lb, x_ub, closest_to_mean, self['halfwidth'][i])
-				p_min = jnp.minimum(_vmap_integ_Triangular_per_dim_single(x_lb, x_ub, mean_lb[i], self['halfwidth'][i]),
-									_vmap_integ_Triangular_per_dim_single(x_lb, x_ub, mean_ub[i], self['halfwidth'][i]))
+            shape = (shape,)
 
-			probs.append(jnp.vstack([p_min, p_max]).T)
-			prob_low.append(p_min)
-			prob_high.append(p_max)
+        sample_shape = tuple(shape) + (mean.shape[0],)
 
-		return probs, prob_low, prob_high
-	
-	
+        rng1, rng2 = jax.random.split(rng)
+
+        u1 = jax.random.uniform(rng1, shape=sample_shape)
+
+        u2 = jax.random.uniform(rng2, shape=sample_shape)
+
+        return mean + halfwidth * (u1 - u2)
+
+    def set_partition_probs(self, num_cells):
+
+        '''
+
+        Partition the support into a grid of cells and compute the joint probability
+
+        mass of each cell.
+
+        Each dimension i is divided into num_cells[i] equal-width intervals within
+
+        [mean[i] - halfwidth[i], mean[i] + halfwidth[i]]. The full grid contains
+
+        prod(num_cells) cells. Joint probabilities are the product of per-dimension
+
+        probabilities (independent dimensions).
+
+        :param num_cells: Array of integers of length n_dims, number of cells per dimension.
+
+        :return:
+
+            - cells:     array of shape (prod(num_cells), n_dims, 2) with [lb, ub] per dim per cell.
+
+            - probs:     array of shape (prod(num_cells),) with joint probability mass per cell.
+
+            - remainder: scalar, total probability mass not captured by any cell
+
+                         (theoretically zero; captures floating-point residuals).
+
+        '''
+
+        mean = self['mean']
+
+        halfwidth = self['halfwidth']
+
+        n_dims = len(halfwidth)
+
+        has_noise = np.asarray(halfwidth) > 0
+
+        per_dim_cells = []
+
+        per_dim_probs = []
+
+        actual_num_cells = []
+
+        for i in range(n_dims):
+
+            if has_noise[i]:
+
+                edges = jnp.linspace(mean[i] - halfwidth[i], mean[i] + halfwidth[i], num_cells[i] + 1)
+
+                lbs = edges[:-1]
+
+                ubs = edges[1:]
+
+                p = _vmap_integ_Triangular_per_dim_single(lbs, ubs, mean[i], halfwidth[i])
+
+                actual_num_cells.append(num_cells[i])
+
+            else:
+
+                lbs = jnp.array([mean[i]])
+
+                ubs = jnp.array([mean[i]])
+
+                p = jnp.array([1.0])
+
+                actual_num_cells.append(1)
+
+            per_dim_cells.append(jnp.stack([lbs, ubs], axis=1))
+
+            per_dim_probs.append(p)
+# Build flat index arrays for the Cartesian product
+        index_grids = np.meshgrid(*[np.arange(n) for n in actual_num_cells], indexing='ij')
+
+        flat_idx = [g.reshape(-1) for g in index_grids]
+# cells[j, i, :] = per-dim bounds of dimension i for cell j
+        all_cells = jnp.stack([per_dim_cells[i][flat_idx[i]] for i in range(n_dims)], axis=1)
+# joint probability = product of per-dimension probabilities
+        all_probs = per_dim_probs[0][flat_idx[0]]
+
+        for i in range(1, n_dims):
+
+            all_probs = all_probs * per_dim_probs[i][flat_idx[i]]
+
+        self.partition = {
+
+            "cells": all_cells,
+
+            "probs": all_probs,
+
+            "remainder": 1.0 - jnp.sum(all_probs)
+
+        }
+
+        return
+
+    def prob_minmax(self, x_lb, x_ub, mean_lb, mean_ub, wrap_array):
+
+        '''
+
+        Compute the min/max integral of a multivariate triangular distribution over a given interval,
+
+        where the mean of the triangular distribution lies in [mean_lb, mean_ub].
+
+        :param x_lb: Lower bound of the interval.
+
+        :param x_ub: Upper bound of the interval.
+
+        :param mean_lb: Lower bound of the mean of the triangular distribution.
+
+        :param mean_ub: Upper bound of the mean of the triangular distribution.
+
+        :param wrap_array: Wrap at the indices where this array is True.
+
+        :return: Min/max probabilities.
+
+        '''
+# Determine point closest to mean of region over which to integrate.
+        closest_to_mean = _closest_to_mean(x_lb, x_ub, mean_lb, mean_ub)
+# Maximum probability is the product.
+        p_max = jnp.prod(_vmap_integ_Triangular(x_lb, x_ub, closest_to_mean, self['halfwidth']) * ~wrap_array + 1 * wrap_array)
+
+        p1 = _vmap_integ_Triangular(x_lb, x_ub, mean_lb, self['halfwidth']) * ~wrap_array + 1 * wrap_array
+
+        p2 = _vmap_integ_Triangular(x_lb, x_ub, mean_ub, self['halfwidth']) * ~wrap_array + 1 * wrap_array
+
+        p_min = jnp.prod(jnp.minimum(p1, p2))
+
+        return jnp.array([p_min, p_max])
+
+    def prob_minmax_per_dim(self, n, wrap, x_lb_per_dim, x_ub_per_dim, mean_lb, mean_ub, state_space_size):
+
+        '''
+
+        Compute the min/max integral of a multivariate triangular distribution over a given interval,
+
+        where the mean of the triangular distribution lies in [mean_lb, mean_ub].
+
+        Exploit rectangular partition to compute much fewer triangular integrals.
+
+        :param n: Dimension of the state space.
+
+        :param wrap: Wrap at the indices where this array is True.
+
+        :param x_lb_per_dim: Lower bound of the interval per dimension.
+
+        :param x_ub_per_dim: Upper bound of the interval per dimension.
+
+        :param mean_lb: Lower bound of the mean of the triangular distribution.
+
+        :param mean_ub: Upper bound of the mean of the triangular distribution.
+
+        :param state_space_size: Size of the state space per dimension (i.e., size of the "state space box")
+
+        :return:
+
+            - Min/max probabilities.
+
+            - Lower bound probabilities.
+
+            - Upper bound probabilities.
+
+        '''
+
+        probs = []
+
+        prob_low = []
+
+        prob_high = []
+
+        for i in range(n):
+
+            x_lb = x_lb_per_dim[i]
+
+            x_ub = x_ub_per_dim[i]
+
+            closest_to_mean = _closest_to_mean(x_lb, x_ub, mean_lb[i], mean_ub[i])
+
+            if wrap[i]:
+
+                shift_neg = -state_space_size[i]
+
+                shift_pos = state_space_size[i]
+
+                res_neg = _vmap_integ_Triangular_per_dim(
+
+                    x_lb + shift_neg,
+
+                    x_ub + shift_neg,
+
+                    _closest_to_mean(x_lb + shift_neg, x_ub + shift_neg, mean_lb[i], mean_ub[i]),
+
+                    self['halfwidth'][i])
+
+                res_zero = _vmap_integ_Triangular_per_dim(
+
+                    x_lb,
+
+                    x_ub,
+
+                    closest_to_mean,
+
+                    self['halfwidth'][i])
+
+                res_pos = _vmap_integ_Triangular_per_dim(
+
+                    x_lb + shift_pos,
+
+                    x_ub + shift_pos,
+
+                    _closest_to_mean(x_lb + shift_pos, x_ub + shift_pos, mean_lb[i], mean_ub[i]),
+
+                    self['halfwidth'][i])
+
+                p_max = res_neg + res_zero + res_pos
+
+                res1_neg = _vmap_integ_Triangular_per_dim_single(x_lb + shift_neg, x_ub + shift_neg, mean_lb[i], self['halfwidth'][i])
+
+                res2_neg = _vmap_integ_Triangular_per_dim_single(x_lb + shift_neg, x_ub + shift_neg, mean_ub[i], self['halfwidth'][i])
+
+                res1_zero = _vmap_integ_Triangular_per_dim_single(x_lb, x_ub, mean_lb[i], self['halfwidth'][i])
+
+                res2_zero = _vmap_integ_Triangular_per_dim_single(x_lb, x_ub, mean_ub[i], self['halfwidth'][i])
+
+                res1_pos = _vmap_integ_Triangular_per_dim_single(x_lb + shift_pos, x_ub + shift_pos, mean_lb[i], self['halfwidth'][i])
+
+                res2_pos = _vmap_integ_Triangular_per_dim_single(x_lb + shift_pos, x_ub + shift_pos, mean_ub[i], self['halfwidth'][i])
+
+                p_min = jnp.minimum(res1_neg, res2_neg) + jnp.minimum(res1_zero, res2_zero) + jnp.minimum(res1_pos, res2_pos)
+
+            else:
+
+                p_max = _vmap_integ_Triangular_per_dim(x_lb, x_ub, closest_to_mean, self['halfwidth'][i])
+
+                p_min = jnp.minimum(_vmap_integ_Triangular_per_dim_single(x_lb, x_ub, mean_lb[i], self['halfwidth'][i]),
+
+                                    _vmap_integ_Triangular_per_dim_single(x_lb, x_ub, mean_ub[i], self['halfwidth'][i]))
+
+            probs.append(jnp.vstack([p_min, p_max]).T)
+
+            prob_low.append(p_min)
+
+            prob_high.append(p_max)
+
+        return probs, prob_low, prob_high
+
+class TruncatedGaussianBallDistr(dict):
+    def __init__(self, dimension: int, stdev: float, truncation: float = 4.0):
+        if dimension <= 0 or stdev <= 0 or truncation <= 0:
+            raise ValueError('dimension, stdev and truncation must be positive')
+        radius = float(stdev * truncation)
+        super().__init__(type='TruncatedGaussianBall',
+                         mean=jnp.zeros(dimension),
+                         cov=jnp.eye(dimension) * stdev**2,
+                         cov_diag=jnp.full(dimension, stdev**2),
+                         stdev=jnp.full(dimension, stdev),
+                         support_radius=jnp.full(dimension, radius),
+                         ball_radius=radius,
+                         truncation=float(truncation))
+        self.dimension = int(dimension)
+        self.sigma = float(stdev)
+        self.radius = radius
+
+    def sample_jax(self, rng, shape=()):
+        if isinstance(shape, int):
+            shape = (shape,)
+        shape = tuple(shape)
+        full_shape = shape + (self.dimension,)
+        radius2 = self.radius**2
+
+        def draw(key):
+            key, subkey = jax.random.split(key)
+            return key, self.sigma * jax.random.normal(subkey, full_shape)
+
+        rng, samples = draw(rng)
+        invalid = jnp.sum(samples**2, axis=-1) > radius2
+
+        def cond(carry):
+            _, _, bad = carry
+            return jnp.any(bad)
+
+        def body(carry):
+            key, current, bad = carry
+            key, proposals = draw(key)
+            current = jnp.where(bad[..., None], proposals, current)
+            bad = jnp.sum(current**2, axis=-1) > radius2
+            return key, current, bad
+
+        _, samples, _ = jax.lax.while_loop(cond, body, (rng, samples, invalid))
+        return samples
+
+    def sample(self, size=None, rng=None):
+        rng = np.random.default_rng() if rng is None else rng
+        shape = () if size is None else ((size,) if isinstance(size, int) else tuple(size))
+        out = rng.normal(0.0, self.sigma, size=shape + (self.dimension,))
+        bad = np.sum(out**2, axis=-1) > self.radius**2
+        while np.any(bad):
+            out[bad] = rng.normal(0.0, self.sigma, size=(int(np.sum(bad)), self.dimension))
+            bad = np.sum(out**2, axis=-1) > self.radius**2
+        return out

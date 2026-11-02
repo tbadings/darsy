@@ -8,7 +8,9 @@ import jax.numpy as jnp
 import numpy as np
 import scipy
 
-from benchmarks.dynamics.distributions import GaussianDistr, TriangularDistr
+import numpy as np
+import jax.numpy as jnp
+from benchmarks.dynamics.distributions import GaussianDistr, TriangularDistr, TruncatedGaussianBallDistr
 
 logger = logging.getLogger(__name__)
 
@@ -490,3 +492,63 @@ class Temperature1DDynamics:
 
         return state_next
 
+class Temperature1DDynamicsLowNoise:
+    def __init__(self, args):
+
+        self.n = 1
+        self.p = 1
+        self.state_variables = ['temperature']
+        self.wrap = jnp.array([False], dtype=bool)
+
+        # State transition matrix
+        self.A  = np.array([[1.021051862145107]])
+        
+        # Input matrix
+        self.B  = np.array([[3.713548482396956e-01]])
+
+        # Affine term
+        self.b  = np.array([-6.736595886434387e-01])
+
+        # Covariance of the process noise
+        if args.noise_distr == 'gaussian':
+            self.noise = GaussianDistr(np.array([0.05])**2) # From stdev to covariance
+        elif args.noise_distr == 'triangular':
+            self.noise = TriangularDistr(np.array([0.05])) # Halfwidth
+        else:
+            raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
+
+        self.lipschitz = np.abs(self.A)
+
+    def step(self, state, action, noise):
+        state_next = jnp.dot(self.A, state) + jnp.dot(self.B, action) + self.b + noise
+
+        return state_next
+
+class Temperature4DDynamics:
+    def __init__(self, args, noise_truncation=4.0):
+        self.n = 4
+        self.p = 4
+        self.state_variables = [f'temperature_room{i}' for i in range(1, 5)]
+        self.wrap = jnp.zeros(4, dtype=bool)
+
+        self.A = np.array([
+            [0.9010, 0.0625, 0.0, 0.0],
+            [0.0625, 0.8385, 0.0625, 0.0],
+            [0.0, 0.0625, 0.8385, 0.0625],
+            [0.0, 0.0, 0.0625, 0.9010],
+        ])
+        self.B = 0.7 * np.eye(4)
+        self.b = 0.219 * np.ones(4)
+        self.noise_truncation = float(noise_truncation)
+        sigma = 0.02 / 3.0
+        self.noise = TruncatedGaussianBallDistr(
+            dimension=4, stdev=sigma, truncation=self.noise_truncation
+        )
+        logger.info('-Assuming truncated gaussian disturbance')
+
+        # ||w||_2 <= truncation*sigma implies |1+w_i| <= 1+truncation*sigma.
+        self.lipschitz = (1.0 + self.noise.radius) * np.abs(self.A)
+
+    def step(self, state, action, noise):
+        return ((1.0 + noise) * (jnp.asarray(self.A) @ state)
+                + jnp.asarray(self.B) @ action + jnp.asarray(self.b))

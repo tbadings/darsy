@@ -10,6 +10,8 @@ from .CartPole import CartPole
 from .Integrators import DoubleIntegrator, DoubleIntegrator_scLTL
 from .Test1D import Test1D
 from .Temperature1D import Temperature1D_reach
+from .Temperature1D_safety import Temperature1D_safety
+from .Temperature4D import Temperature4D
 
 
 def create_model(args):
@@ -29,6 +31,8 @@ def create_model(args):
 		'DoubleIntegrator_scLTL': DoubleIntegrator_scLTL,
 		'Test1D': Test1D,
 		'Temperature1D_reach': Temperature1D_reach,
+        'Temperature1D_safety': Temperature1D_safety,
+        'Temperature4D': Temperature4D,
 	}
 
 	model_cls = model_map.get(args.model)

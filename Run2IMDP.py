@@ -15,6 +15,7 @@ from core.abstraction.imdp.robust_vi_2layer import (
 from core.abstraction.imdp.robust_vi_2layer_dfa import (
     encode_imdp_labels, robust_scLTL_synthesis_2layer_jax, initial_product_state)
 from core.automaton.dfa import scLTL_to_DFA
+from core.abstraction.imdp.rvi_jax_safety import safety_imdp_jax, safety_2imdp_jax
 from core.options import parse_arguments
 from core.pipeline import (
     configure_run,
@@ -24,12 +25,28 @@ from core.pipeline import (
     report,
     report_scLTL,
     is_reach_avoid,
+    is_safety,
+    safe_state_mask,
+    report_safety,
 )
 
 from RunIMDP import build_imdp
 # from export_2imdp_matlab import save_2imdp_matlab
 
 logger = logging.getLogger(__name__)
+
+
+def save_safety_results(args, s0, lower, upper, policy):
+    """Save time-indexed values and global-action policy; index h is remaining horizon."""
+    np.savez_compressed(
+        args.output_dir / 'safety_synthesis.npz',
+        V_lower=lower, V_upper=upper, policy=policy,
+        initial_state=int(s0), horizon=int(args.horizon),
+    )
+    logger.info('Safety horizon=%d, initial state=%d: lower=%.6f, upper=%.6f',
+                args.horizon, s0, lower[args.horizon, s0], upper[args.horizon, s0])
+
+
 
 def build_2imdp(args, model, partition, s_init):
     """Reuse the shared fine/coarse interval abstraction built by RunIMDP."""
@@ -167,10 +184,12 @@ if __name__ == '__main__':
         )
 
     reach_avoid = is_reach_avoid(formula)
+    safety = is_safety(formula)
 
     logger.info(
-        "=== 2IMDP synthesis: %s ===",
-        "Reach-avoid" if reach_avoid else "sc-LTL"
+        '=== IMDP %s synthesis (solver=%s) ===',
+        'safety' if safety else ('reach-avoid' if reach_avoid else 'scLTL'),
+        args.solver
     )
 
     start = time.time()
@@ -179,7 +198,17 @@ if __name__ == '__main__':
     # CASE 1: REACH-AVOID SYNTHESIS
     # ==================================================
 
-    if reach_avoid:
+    if safety:
+        if args.solver != 'jax':
+            raise ValueError('Finite-horizon safety currently requires --solver jax')
+        mask = safe_state_mask(partition, model.safe_set)
+        upper_mask = safe_state_mask(partition, model.safe_set, optimistic=True)
+        with jax.default_device(args.rvi_device):
+            V_lower, V_upper, policy = safety_2imdp_jax(abstraction, mask, args.horizon, args.floatprecision, upper_mask)
+        save_safety_results(args, s0, V_lower, V_upper, policy)
+        report_safety(args, stamp, model, partition, V_lower, V_upper, policy)
+
+    elif reach_avoid:
 
         logger.info(
             "Reach-avoid specification detected. "

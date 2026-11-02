@@ -15,15 +15,16 @@ if __name__ == "__main__":
 
     # Command-line arguments
     sys.argv = [
-        "Run2IMDP.py",
-        "--model", "Temperature1D_reach",
+        "RunIMDP.py",
+        "--model", "Temperature4D",
         "--noise_distr", "gaussian",
-        "--coarse_factor", "3",
-        "--num_samples", "100000"
+        "--coarse_factor", "1",
+        "--num_samples", "100",
+        "--batch_size", "1",
     ]
 
     # Run script
     runpy.run_path(
-        str(project_dir / "Run2IMDP.py"),
+        str(project_dir / "RunIMDP.py"),
         run_name="__main__"
     )

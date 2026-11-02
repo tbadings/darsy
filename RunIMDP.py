@@ -20,6 +20,7 @@ from core.abstraction.imdp.robust_vi_2layer_dfa import (
 from core.abstraction.imdp.rvi_jax_dfa import robust_scLTL_synthesis_imdp_jax
 from core.abstraction.partition import CoarsePartition
 from core.automaton.dfa import scLTL_to_DFA
+from core.abstraction.imdp.rvi_jax_safety import safety_imdp_jax, safety_2imdp_jax
 from core.options import parse_arguments
 from core.pipeline import (
     configure_run,
@@ -29,9 +30,25 @@ from core.pipeline import (
     report,
     report_scLTL,
     is_reach_avoid,
+    is_safety,
+    safe_state_mask,
+    report_safety,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def save_safety_results(args, s0, lower, upper, policy):
+    """Save time-indexed values and global-action policy; index h is remaining horizon."""
+    np.savez_compressed(
+        args.output_dir / 'safety_synthesis.npz',
+        V_lower=lower, V_upper=upper, policy=policy,
+        initial_state=int(s0), horizon=int(args.horizon),
+    )
+    logger.info('Safety horizon=%d, initial state=%d: lower=%.6f, upper=%.6f',
+                args.horizon, s0, lower[args.horizon, s0], upper[args.horizon, s0])
+
+
 
 
 def identify_states_of_interest(partition, regions):
@@ -201,11 +218,24 @@ def main():
     if not exists:
         raise ValueError('Initial continuous state is outside the partition.')
     reach_avoid = is_reach_avoid(formula)
-    logger.info('=== IMDP %s synthesis (solver=%s) ===',
-                'reach-avoid' if reach_avoid else 'scLTL', args.solver)
+    safety = is_safety(formula)
+    logger.info(
+        '=== IMDP %s synthesis (solver=%s) ===',
+        'safety' if safety else ('reach-avoid' if reach_avoid else 'scLTL'),
+        args.solver
+    )
     t = time.time()
 
-    if reach_avoid:
+    if safety:
+        if args.solver != 'jax':
+            raise ValueError('Finite-horizon safety currently requires --solver jax')
+        mask = safe_state_mask(partition, model.safe_set)
+        upper_mask = safe_state_mask(partition, model.safe_set, optimistic=True)
+        with jax.default_device(args.rvi_device):
+            V_lower, V_upper, policy = safety_imdp_jax(imdp, mask, args.horizon, args.floatprecision, upper_mask)
+        save_safety_results(args, s0, V_lower, V_upper, policy)
+        report_safety(args, stamp, model, partition, V_lower, V_upper, policy)
+    elif reach_avoid:
         V, policy = solve_imdp(args, imdp, s0)
         logger.info('Initial state s0=%d: value=%.6f', s0, V[s0])
         policy_inputs = extract_policy_inputs(
