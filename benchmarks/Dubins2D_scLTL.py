@@ -3,8 +3,6 @@ import jax.numpy as jnp
 import numpy as np
 
 
-
-
 class Dubins2D_scLTL(DubinsDynamics2D):
     '''
     Simplified version of the Dubin's vehicle benchmark, with a 3D state space and a 2D control input space.

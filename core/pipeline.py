@@ -501,7 +501,6 @@ def finish(args):
     logger.info('====================\n')
 
 
-
 def extract_product_policy_inputs(args, partition, policy, nr_states):
     """Map global action indices policy[s,z] to physical inputs u[s,z,:]."""
     policy = np.asarray(policy, dtype=np.int32)
@@ -519,8 +518,6 @@ def extract_product_policy_inputs(args, partition, policy, nr_states):
         raise ValueError('Policy references an action outside the partition action grid')
     result[ss, zz] = actions[ss, policy[ss, zz]]
     return result
-
-
 
 
 def draw_regions_of_interest(ax, model, dimensions=None):

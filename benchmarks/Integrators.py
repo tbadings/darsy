@@ -88,7 +88,6 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
         return self.labels[r]
         
 
-
 class DoubleIntegrator_scLTL(DoubleIntegratorDynamics):
     """Double-integrator benchmark with a temporal-logic specification."""
 

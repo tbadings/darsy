@@ -125,7 +125,6 @@ class Drone6D(DroneDynamics):
         return self.labels[r]
 
 
-
 class Drone6D_small(DroneDynamics):
     """Reduced-domain three-dimensional drone benchmark with three acceleration controls."""
 

@@ -4,7 +4,6 @@ import jax.numpy as jnp
 import numpy as np
 
 
-
 def wrap_theta(theta):
     return (theta + np.pi) % (2 * np.pi) - np.pi
 
