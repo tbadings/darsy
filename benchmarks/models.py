@@ -58,7 +58,7 @@ class DubinsDynamics2D:
 
 
 class DubinsDynamics3D:
-    """Unicycle with position, periodic heading, and additive process noise."""
+    """Unicycle with position and periodic heading subject to additive noise."""
 
     def __init__(self, args):
 
@@ -76,9 +76,9 @@ class DubinsDynamics3D:
 
         # Covariance of the process noise
         if args.noise_distr == 'gaussian':
-            self.noise = GaussianDistr(np.array([0.05, 0.05, 0.05])**2)
+            self.noise = GaussianDistr(np.array([0.0, 0.0, 0.05])**2)
         elif args.noise_distr == 'triangular':
-            self.noise = TriangularDistr(np.array([0, 0, 0.2])) # Halfwidth
+            self.noise = TriangularDistr(np.array([0.0, 0.0, 0.05])) # Halfwidth
         else:
             raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
@@ -91,8 +91,8 @@ class DubinsDynamics3D:
     def step(self, state, action, noise):
         x, y, theta = state[0], state[1], state[2]
         u1, u2 = action[0], action[1]
-        x_next = x + self.tau * u2 * jnp.cos(theta) + noise[0]
-        y_next = y + self.tau * u2 * jnp.sin(theta) + noise[1]
+        x_next = x + self.tau * u2 * jnp.cos(theta)
+        y_next = y + self.tau * u2 * jnp.sin(theta)
         theta_next = wrap_theta(theta + self.tau * self.alpha * u1 + noise[2])
 
         state_next = jnp.array([x_next, y_next, theta_next])

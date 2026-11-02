@@ -77,9 +77,10 @@ Example runs:
 
 `Dubins3D` and `Dubins3D_scLTL` use a 1 s step, steering coefficient 0.85, and
 heading wrapped to `[-pi, pi)`. Their nine controls are the Cartesian product of
-steering rates `{-pi/2, 0, pi/2}` and velocities `{-1, 0, 1}`. By default, independent
-zero-mean Gaussian noise with standard deviation 0.05 is added to each state
-coordinate. Other models still default to triangular noise; `--noise_distr` explicitly
+steering rates `{-pi/2, 0, pi/2}` and velocities `{-1, 0, 1}`. Their step function
+adds noise only to the heading, using zero-mean Gaussian noise with standard
+deviation 0.05 by default, or triangular noise with halfwidth 0.05.
+Other models still default to triangular noise; `--noise_distr` explicitly
 overrides the default.
 
 ```bash
