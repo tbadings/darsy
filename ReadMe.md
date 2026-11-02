@@ -1,6 +1,6 @@
 # IMDP Synthesis
 
-This repository implements abstraction-based methods for robust policy synthesis in discrete-time stochastic dynamical systems, based on interval Markov decision process (IDMP) abstractions and set-valued Markov decision process (SVMDP) abstractions.
+This repository implements abstraction-based methods for robust policy synthesis in discrete-time stochastic dynamical systems, based on interval Markov decision process (IMDP) and two-layer IMDP (2IMDP) abstractions.
 
 # Installation
 
@@ -45,12 +45,12 @@ There is one entrypoint per abstraction:
 
 ```bash
 python RunIMDP.py --model <model_name>     # IMDP abstraction
-python RunSVMDP.py --model <model_name>    # SVMDP abstraction
+python Run2IMDP.py --model <model_name>    # Two-layer IMDP abstraction
 ```
 
-Both share the run pipeline in `core/pipeline.py` and accept the same options; they differ only in the abstraction they build and the solver they call. `--solver storm` applies to `RunIMDP.py` only.
+Both share the run pipeline in `core/pipeline.py` and the command-line options. `Run2IMDP.py` builds a coarse layer controlled by `--coarse_factor` and uses JAX value iteration. `--solver storm` and policy iteration apply to `RunIMDP.py` only.
 
-`RunHelper.py` is a convenience launcher for local experimentation: uncomment one of its `run(...)` lines to replay a fixed configuration through either entrypoint.
+`RunHelper.py` is a convenience launcher for local experimentation: set `ABSTRACTION` to `"IMDP"` or `"2IMDP"` and enable the desired `run(...)` line to replay a fixed configuration.
 
 # Available benchmarks
 
@@ -75,7 +75,7 @@ Example runs:
 ```bash
 python RunIMDP.py --model Dubins3D --solver jax
 python RunIMDP.py --model Drone4D --solver storm
-python RunSVMDP.py --model MountainCar
+python Run2IMDP.py --model MountainCar --solver jax --no-policy_iteration
 ```
 
 # Running a benchmark
@@ -136,6 +136,7 @@ Note: the Storm backend currently supports robust value iteration, not robust po
 
 - `--batch_size`: number of states processed together when computing transition probability intervals.
 - `--frs_batch_size`: number of regions processed per batch when computing forward reachable sets.
+- `--coarse_factor`: number of fine cells per coarse block dimension for `Run2IMDP.py` (default: `3`).
 - `--gpu` or `--no-gpu`: select the main JAX platform.
 - `--gpu_rvi` or `--no-gpu_rvi`: select the device used for robust dynamic programming.
 
@@ -175,6 +176,6 @@ Depending on the benchmark and selected options, that directory may contain:
 
 - `benchmarks/`: benchmark model definitions.
 - `core/pipeline.py`: run pipeline shared by both entrypoints (setup, checkpointing, policy extraction, validation, plotting).
-- `core/abstraction/`: partitioning, IMDP and SVMDP construction, and solver implementations.
+- `core/abstraction/`: partitioning, IMDP and two-layer IMDP construction, and solver implementations.
 - `core/plotting/`: heatmaps and trajectory visualization.
 - `core/validate/`: Monte Carlo simulation and validation utilities.

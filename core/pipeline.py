@@ -1,5 +1,5 @@
 """
-Shared run pipeline for the abstraction entrypoints (``RunIMDP.py``, ``RunSVMDP.py``).
+Shared run pipeline for the interval abstractions (``RunIMDP.py``, ``Run2IMDP.py``).
 
 Both entrypoints follow the same recipe: configure the run, obtain an abstraction (either
 built from scratch or restored from a checkpoint), solve it, and turn the resulting value
@@ -14,6 +14,8 @@ import logging
 import os
 import pickle
 import random
+import re
+import subprocess
 import time
 from pathlib import Path
 
@@ -24,11 +26,6 @@ import benchmarks
 from core.abstraction.partition import DensePartition
 from core.jax_config import configure_jax
 from core.utils import add_file_handler, configure_logging
-
-import re
-import subprocess
-import warnings
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +77,7 @@ def save_checkpoint(args, key, model, partition, abstraction):
     Write the model, partition, and abstraction to checkpoint.pkl in the run output directory.
 
     :param args: Argument namespace.
-    :param key: Key under which the abstraction is stored ('imdp' or 'svmdp').
+    :param key: Key under which the abstraction is stored ('imdp' or '2imdp').
     :param model: Benchmark model.
     :param partition: Partition of the continuous state space.
     :param abstraction: Abstraction object to store.
@@ -170,7 +167,7 @@ def prepare_abstraction(args, stamp, name, build):
 
     :param args: Argument namespace.
     :param stamp: Run timestamp.
-    :param name: Name of the abstraction ('IMDP' or 'SVMDP'); its lowercase form is the
+    :param name: Name of the abstraction ('IMDP' or '2IMDP'); its lowercase form is the
         key under which the abstraction is stored in the checkpoint.
     :param build: Callback (args, model, partition, s_init) -> abstraction, invoked when the
         abstraction is generated from scratch.

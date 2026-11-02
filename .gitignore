@@ -29,7 +29,7 @@ ENV/
 htmlcov/
 
 # ---- Run artifacts ----
-# Timestamped run folders created by RunIMDP.py / RunSVMDP.py (--output_root, default 'output').
+# Timestamped run folders created by RunIMDP.py / Run2IMDP.py (--output_root, default 'output').
 # Each holds logs, heatmaps, trajectory plots, GIFs, and checkpoint.pkl.
 output/
 checkpoint.pkl
