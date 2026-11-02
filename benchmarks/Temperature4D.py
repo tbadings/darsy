@@ -4,14 +4,7 @@ import numpy as np
 
 
 class Temperature4D(Temperature4DDynamics):
-    '''
-    4-room temperature regulation benchmark.
-    The state is 4D, with each element representing the temperature of each room. 
-    The control input is a 4D vector, with each element taking values in {0,1}. The
-    values represent whether the heater of that room is ON or OFF.
-    The disturbance is multiplicative and its distribution is gaussian and truncated in a ball.
-    The specification is safety with a time horizon of 20 time units
-    '''
+    """Four-room temperature regulation with four binary heater controls and ball-truncated multiplicative Gaussian noise."""
 
     def __init__(self, args):
         Temperature4DDynamics.__init__(self, args)
@@ -21,46 +14,44 @@ class Temperature4D(Temperature4DDynamics):
         self.set_spec()
 
     def set_spec(self):
-        '''
-        Set the abstraction parameters and the specification.
-        '''
+        """Configure actions, partition, labeled regions, and specification."""
         
         self.partition = {}
         self.targets = {}
 
-        # Authority limit for the control u, both positive and negative
+        # Four independent on/off heaters: 2**4 = 16 possible actions.
 
         self.uMin = np.zeros(4)
         self.uMax = np.ones(4)
         self.num_actions = np.full(4, 2, dtype=int)
 
-        # Specify the boundary of the state set to partition.
+        # State-space bounds and the safety region coincide.
         # In this benchmark, this is also the safe set
 
         boundary = [[18.5,18.5,18.5,18.5], [23.5,23.5,23.5,23.5]]
 
         self.partition['boundary'] = np.array(boundary)
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([12])
-        self.safe_set = np.array([boundary])
-        
+        self.safe_set = np.array([boundary], dtype=float)
+
+        # Nominal partition resolution along each state dimension.
+        self.partition['number_per_dim'] = np.full(4, 12, dtype=int)
+                
         # --------------------------------------------------
         # Regions of interest
         # --------------------------------------------------
 
+        # Each region is a union of boxes with shape (N, 2, state_dim).
         self.regions = {
-                    "r_goal": np.array([
-                    
-                    ], dtype=float),
+                    "r_goal": np.empty((0, 2, 4), dtype=float),
 
-                    "r_unsafe": np.array([
-                    ], dtype=float),
+                    "r_unsafe": np.empty((0, 2, 4), dtype=float),
                     
                     "r_safe": self.safe_set
                             
                 }
 
-        # Preserve compatibility with reach-avoid synthesis
+        # Expose goal/unsafe geometry for the reach-avoid solver interface.
         self.goal = self.regions["r_goal"]
         self.critical = self.regions["r_unsafe"]
 
@@ -78,6 +69,7 @@ class Temperature4D(Temperature4DDynamics):
         # Labeling function L: R -> 2^AP
         # --------------------------------------------------
 
+        # Assign atomic propositions to each named region of interest.
         self.labels = {
             "r_goal": {"goal"},
             "r_unsafe": {"unsafe"},
@@ -99,22 +91,7 @@ class Temperature4D(Temperature4DDynamics):
         self.x0 = np.array([21.0,21.0,21.0,21.0])
 
     def labeling_function(self, r):
-                """
-                Returns the atomic propositions that hold
-                in region r.
-        
-                Parameters
-                ----------
-                r : str
-                    Identifier of a region of interest.
-        
-                Returns
-                -------
-                set[str]
-                    Atomic propositions true in region r.
-                """
-        
-                if r not in self.regions:
-                    raise ValueError(f"Unknown region: {r}")
-        
-                return self.labels[r]
+        """Return the atomic propositions assigned to a named region."""
+        if r not in self.regions:
+            raise ValueError(f"Unknown region: {r}")
+        return self.labels[r]

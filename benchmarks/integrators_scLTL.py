@@ -4,6 +4,7 @@ import numpy as np
 
 
 class DoubleIntegrator(DoubleIntegratorDynamics):
+    """Double-integrator benchmark with position and velocity states and scalar acceleration input."""
 
     def __init__(self, args):
         super().__init__(args)
@@ -13,10 +14,7 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
         self.set_spec()
 
     def set_spec(self):
-        """
-        Set abstraction parameters, regions of interest,
-        labeling function, and sc-LTL specification.
-        """
+        """Configure actions, partition, labeled regions, and specification."""
 
         self.partition = {}
         self.targets = {}
@@ -33,6 +31,7 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
         # State-space partition
         # --------------------------------------------------
 
+        # State-space bounds used for abstraction.
         self.partition["boundary"] = np.array([
             [-21, -10.5],
             [21, 10.5]
@@ -42,12 +41,14 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
             self.partition["boundary"]
         )
 
+        # Nominal partition resolution along each state dimension.
         self.partition["number_per_dim"] = np.array([51, 51])
 
         # --------------------------------------------------
         # Regions of interest
         # --------------------------------------------------
 
+        # Each region is a union of boxes with shape (N, 2, state_dim).
         self.regions = {
             "r_goal": np.array([
                 [[-4, -2], [4, 2]]
@@ -64,7 +65,7 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
             ], dtype=float)
         }
 
-        # Preserve compatibility with reach-avoid synthesis
+        # Expose goal/unsafe geometry for the reach-avoid solver interface.
         self.goal = self.regions["r_goal"]
         self.critical = self.regions["r_unsafe"]
 
@@ -83,6 +84,7 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
         # Labeling function L: R -> 2^AP
         # --------------------------------------------------
 
+        # Assign atomic propositions to each named region of interest.
         self.labels = {
             "r_goal": {"goal"},
             "r_unsafe": {"unsafe"},
@@ -91,7 +93,7 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
         }
 
         # --------------------------------------------------
-        # sc-LTL specification
+        # Temporal-logic specification (reach-avoid or general scLTL)
         # --------------------------------------------------
 
         self.specification = (
@@ -106,22 +108,7 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
         self.x0 = np.array([0, -8])
 
     def labeling_function(self, r):
-        """
-        Return the atomic propositions that hold
-        in region r.
-
-        Parameters
-        ----------
-        r : str
-            Identifier of a region of interest.
-
-        Returns
-        -------
-        set[str]
-            Atomic propositions true in region r.
-        """
-
+        """Return the atomic propositions assigned to a named region."""
         if r not in self.regions:
             raise ValueError(f"Unknown region: {r}")
-
         return self.labels[r]

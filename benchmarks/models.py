@@ -1,6 +1,8 @@
-'''
-This file contains the dynamics models used in the benchmarks.
-'''
+"""Stochastic dynamics shared by benchmark definitions.
+
+The step methods implement the state transition and the Lipschitz matrices
+are used for conservative successor-box inflation.
+"""
 
 import logging
 
@@ -8,8 +10,6 @@ import jax.numpy as jnp
 import numpy as np
 import scipy
 
-import numpy as np
-import jax.numpy as jnp
 from benchmarks.dynamics.distributions import GaussianDistr, TriangularDistr, TruncatedGaussianBallDistr
 
 logger = logging.getLogger(__name__)
@@ -525,6 +525,7 @@ class Temperature1DDynamicsLowNoise:
         return state_next
 
 class Temperature4DDynamics:
+    """Four coupled room temperatures with multiplicative ball-truncated noise."""
     def __init__(self, args, noise_truncation=4.0):
         self.n = 4
         self.p = 4

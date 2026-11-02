@@ -5,9 +5,7 @@ from matplotlib import animation
 
 
 class Pendulum(PendulumDynamics):
-    '''
-    Pendulum benchmark.
-    '''
+    """Pendulum benchmark with angular position and angular velocity and scalar torque input."""
 
     def __init__(self, args):
         PendulumDynamics.__init__(self, args)
@@ -19,36 +17,36 @@ class Pendulum(PendulumDynamics):
         self.set_spec()
 
     def set_spec(self):
-        '''
-        Set the abstraction parameters and the reach-avoid specification.
-        '''
+        """Configure actions, partition, labeled regions, and specification."""
 
         self.partition = {}
         self.targets = {}
 
-        # Authority limit for the control u, both positive and negative
+        # Discrete control grid: bounds and samples per input dimension.
         self.uMin = [-2]
         self.uMax = [2]
         self.num_actions = [3]
 
+        # State-space bounds used for abstraction.
         self.partition['boundary'] = np.array([[-np.pi, -8], [np.pi, 8]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
+        # Nominal partition resolution along each state dimension.
         self.partition['number_per_dim'] = np.array([200, 200])
 
         # --------------------------------------------------
         # Regions of interest
         # --------------------------------------------------
 
+        # Each region is a union of boxes with shape (N, 2, state_dim).
         self.regions = {
                     "r_goal": np.array([
                     [[-0.1*np.pi, -1], [0.1*np.pi, 1]]
                     ], dtype=float),
 
-                    "r_unsafe": np.array([
-                    ], dtype=float)
+                    "r_unsafe": np.empty((0, 2, 2), dtype=float)
                 }
 
-        # Preserve compatibility with reach-avoid synthesis
+        # Expose goal/unsafe geometry for the reach-avoid solver interface.
         self.goal = self.regions["r_goal"]
         self.critical = self.regions["r_unsafe"]
 
@@ -65,19 +63,19 @@ class Pendulum(PendulumDynamics):
         # Labeling function L: R -> 2^AP
         # --------------------------------------------------
 
+        # Assign atomic propositions to each named region of interest.
         self.labels = {
             "r_goal": {"goal"},
             "r_unsafe": {"unsafe"}
         }
 
         # --------------------------------------------------
-        # sc-LTL specification
+        # Temporal-logic specification (reach-avoid or general scLTL)
         # --------------------------------------------------
 
         self.specification = (
             "(!unsafe) U (goal)"
         )
-        # self.specification = ("(!unsafe) U goal")
 
         # --------------------------------------------------
         # Initial condition
@@ -87,25 +85,10 @@ class Pendulum(PendulumDynamics):
         self.x0 = np.array([0.99*np.pi, 0])
 
     def labeling_function(self, r):
-            """
-            Return the atomic propositions that hold
-            in region r.
-    
-            Parameters
-            ----------
-            r : str
-                Identifier of a region of interest.
-    
-            Returns
-            -------
-            set[str]
-                Atomic propositions true in region r.
-            """
-    
-            if r not in self.regions:
-                raise ValueError(f"Unknown region: {r}")
-    
-            return self.labels[r]
+        """Return the atomic propositions assigned to a named region."""
+        if r not in self.regions:
+            raise ValueError(f"Unknown region: {r}")
+        return self.labels[r]
 
 
     def plot_trajectory_gif(self, trajectory, filename="pendulum_trajectory.gif"):

@@ -5,9 +5,7 @@ from matplotlib import animation
 
 
 class CartPole(CartPoleDynamics):
-    '''
-    CartPole benchmark (cart position, cart velocity, pole angle, pole angular velocity).
-    '''
+    """Cart-pole benchmark with cart position/velocity and pole angle/angular velocity; a scalar force controls the cart."""
 
     def __init__(self, args):
         CartPoleDynamics.__init__(self, args)
@@ -20,21 +18,21 @@ class CartPole(CartPoleDynamics):
         self.set_spec()
 
     def set_spec(self):
-        '''
-        Set the abstraction parameters and the reach-avoid specification.
-        '''
+        """Configure actions, partition, labeled regions, and specification."""
 
         self.partition = {}
         self.targets = {}
 
-        # Authority limit for the control u (force on the cart), both positive and negative
+        # Discrete control grid: bounds and samples per input dimension.
         self.uMin = [-10]
         self.uMax = [10]
         self.num_actions = [41]
 
+        # State-space bounds used for abstraction.
         self.partition['boundary'] = np.array([[-2.4, -3.0, -0.25, -3.0],
                                                [2.4, 3.0, 0.25, 3.0]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
+        # Nominal partition resolution along each state dimension.
         self.partition['number_per_dim'] = 20*np.array([12, 8, 6, 10]) + 1
 
         # --------------------------------------------------
@@ -43,16 +41,16 @@ class CartPole(CartPoleDynamics):
 
         # Goal: balance the pole upright, close to the center of the track
 
+        # Each region is a union of boxes with shape (N, 2, state_dim).
         self.regions = {
                     "r_goal": np.array([
                     [[1, -3.0, -0.05, -3.0], [2.4, 3.0, 0.05, 3.0]]
                     ], dtype=float),
 
-                    "r_unsafe": np.array([
-                    ], dtype=float)
+                    "r_unsafe": np.empty((0, 2, 4), dtype=float)
                 }
 
-        # Preserve compatibility with reach-avoid synthesis
+        # Expose goal/unsafe geometry for the reach-avoid solver interface.
         self.goal = self.regions["r_goal"]
         self.critical = self.regions["r_unsafe"]
 
@@ -69,19 +67,19 @@ class CartPole(CartPoleDynamics):
         # Labeling function L: R -> 2^AP
         # --------------------------------------------------
 
+        # Assign atomic propositions to each named region of interest.
         self.labels = {
             "r_goal": {"goal"},
             "r_unsafe": {"unsafe"}
         }
 
         # --------------------------------------------------
-        # sc-LTL specification
+        # Temporal-logic specification (reach-avoid or general scLTL)
         # --------------------------------------------------
 
         self.specification = (
             "(!unsafe) U (goal)"
         )
-        # self.specification = ("(!unsafe) U goal")
 
         # --------------------------------------------------
         # Initial condition
@@ -92,25 +90,10 @@ class CartPole(CartPoleDynamics):
 
 
     def labeling_function(self, r):
-                    """
-                    Return the atomic propositions that hold
-                    in region r.
-            
-                    Parameters
-                    ----------
-                    r : str
-                        Identifier of a region of interest.
-            
-                    Returns
-                    -------
-                    set[str]
-                        Atomic propositions true in region r.
-                    """
-            
-                    if r not in self.regions:
-                        raise ValueError(f"Unknown region: {r}")
-            
-                    return self.labels[r]
+        """Return the atomic propositions assigned to a named region."""
+        if r not in self.regions:
+            raise ValueError(f"Unknown region: {r}")
+        return self.labels[r]
 
     def plot_trajectory_gif(self, trajectory, filename="cartpole_trajectory.gif"):
         """
