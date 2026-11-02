@@ -58,6 +58,8 @@ class DubinsDynamics2D:
 
 
 class DubinsDynamics3D:
+    """Unicycle with position, periodic heading, and additive process noise."""
+
     def __init__(self, args):
 
         # Discretization step size
@@ -66,7 +68,7 @@ class DubinsDynamics3D:
         self.n = 3
         self.p = 2
         self.state_variables = ['x', 'y', 'angle']
-        self.wrap = jnp.array([False, False, False], dtype=bool)
+        self.wrap = jnp.array([False, False, True], dtype=bool)
 
         self.alpha_min = 0.85
         self.alpha_max = 0.85
@@ -74,24 +76,24 @@ class DubinsDynamics3D:
 
         # Covariance of the process noise
         if args.noise_distr == 'gaussian':
-            self.noise = GaussianDistr(np.array([0, 0, 0.1])**2) # From stdev to covariance
+            self.noise = GaussianDistr(np.array([0.05, 0.05, 0.05])**2)
         elif args.noise_distr == 'triangular':
             self.noise = TriangularDistr(np.array([0, 0, 0.2])) # Halfwidth
         else:
             raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
         self.lipschitz = np.array([
-            [1.0, 0.0, 3.0],
-            [0.0, 1.0, 3.0],
+            [1.0, 0.0, 1.0],
+            [0.0, 1.0, 1.0],
             [0.0, 0.0, 1.0],
         ])
 
     def step(self, state, action, noise):
         x, y, theta = state[0], state[1], state[2]
         u1, u2 = action[0], action[1]
-        x_next = x + self.tau * u2 * jnp.cos(theta)
-        y_next = y + self.tau * u2 * jnp.sin(theta)
-        theta_next = theta + self.tau * self.alpha * u1 + noise[2]
+        x_next = x + self.tau * u2 * jnp.cos(theta) + noise[0]
+        y_next = y + self.tau * u2 * jnp.sin(theta) + noise[1]
+        theta_next = wrap_theta(theta + self.tau * self.alpha * u1 + noise[2])
 
         state_next = jnp.array([x_next, y_next, theta_next])
 

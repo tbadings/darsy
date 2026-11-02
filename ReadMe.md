@@ -59,7 +59,7 @@ Both entrypoints use a full `DensePartition` with grid edges aligned to labeled 
 
 The current benchmark registry includes:
 
-- `Dubins3D`: 3D Dubins vehicle with 2D control input.
+- `Dubins3D`: unicycle with position and heading states; steering rate and velocity inputs.
 - `Dubins4D`: 4D Dubins vehicle with 2D control input.
 - `Drone4D`: 4D quadrotor model.
 - `Pendulum`: inverted pendulum benchmark.
@@ -74,6 +74,13 @@ Included but untested benchmarks are:
 - `CartPole`: cart-pole benchmark.
 
 Example runs:
+
+`Dubins3D` and `Dubins3D_scLTL` use a 1 s step, steering coefficient 0.85, and
+heading wrapped to `[-pi, pi)`. Their nine controls are the Cartesian product of
+steering rates `{-pi/2, 0, pi/2}` and velocities `{-1, 0, 1}`. By default, independent
+zero-mean Gaussian noise with standard deviation 0.05 is added to each state
+coordinate. Other models still default to triangular noise; `--noise_distr` explicitly
+overrides the default.
 
 ```bash
 python RunIMDP.py --model Dubins3D --solver jax

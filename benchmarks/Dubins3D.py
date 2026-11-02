@@ -4,12 +4,8 @@ import jax.numpy as jnp
 import numpy as np
 
 
-def wrap_theta(theta):
-    return (theta + np.pi) % (2 * np.pi) - np.pi
-
-
 class Dubins3D(DubinsDynamics3D):
-    """Dubins vehicle benchmark with planar position and heading states, controlled by turning rate and speed."""
+    """Unicycle reach-avoid benchmark with position and heading states."""
 
     def __init__(self, args):
         DubinsDynamics3D.__init__(self, args)
@@ -24,10 +20,10 @@ class Dubins3D(DubinsDynamics3D):
         self.partition = {}
         self.targets = {}
 
-        # Discrete control grid: bounds and samples per input dimension.
-        self.uMin = [-0.50 * np.pi, -3]
-        self.uMax = [0.50 * np.pi, 3]
-        self.num_actions = [7, 5]
+        # Steering rates {-pi/2, 0, pi/2} and velocities {-1, 0, 1}.
+        self.uMin = [-0.50 * np.pi, -1]
+        self.uMax = [0.50 * np.pi, 1]
+        self.num_actions = [3, 3]
 
         # State-space bounds used for abstraction.
         self.partition['boundary'] = np.array([[-10, -10, -np.pi], [10, 10, np.pi]])
@@ -106,10 +102,10 @@ class Dubins3D_scLTL(DubinsDynamics3D):
         self.partition = {}
         self.targets = {}
 
-        # Discrete control grid: bounds and samples per input dimension.
-        self.uMin = [-0.50 * np.pi, -3]
-        self.uMax = [0.50 * np.pi, 3]
-        self.num_actions = [7, 5]
+        # Steering rates {-pi/2, 0, pi/2} and velocities {-1, 0, 1}.
+        self.uMin = [-0.50 * np.pi, -1]
+        self.uMax = [0.50 * np.pi, 1]
+        self.num_actions = [3, 3]
 
         # State-space bounds used for abstraction.
         self.partition['boundary'] = np.array([[-10, -10, -np.pi], [10, 10, np.pi]])
