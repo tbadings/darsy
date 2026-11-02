@@ -10,8 +10,7 @@ logger = logging.getLogger(__name__)
 def configure_jax(args: argparse.Namespace) -> None:
     jax.config.update("jax_default_matmul_precision", "high")
 
-    # Keep explicitly requested int64 arrays at int64. Partition cell keys need this on fine grids,
-    # where int32 keys would wrap and alias distinct cells.
+    # Keep explicitly requested int64 arrays, including grid strides, at int64.
     jax.config.update("jax_explicit_x64_dtypes", "allow")
 
     # args.floatprecision is float64 (set in options.py); without x64 mode JAX truncates it to float32
@@ -34,8 +33,7 @@ def configure_jax(args: argparse.Namespace) -> None:
     logger.info('JAX backend in use: %s', args.rvi_device.platform)
     logger.debug('JAX devices (%s): %s', args.rvi_device.platform, jax.devices(args.rvi_device.platform))
 
-    # Report the widths in use, after the x64 switch above has settled. Integer widths chosen further
-    # down (partition cell keys, FRS merge keys) log themselves where they are picked.
+    # Report the precision in use after configuring JAX.
     logger.info('Float precision: %s | JAX x64: %s | explicit int64 dtypes: %s',
                 np.dtype(args.floatprecision).name,
                 'enabled' if jax.config.read('jax_enable_x64') else 'disabled',

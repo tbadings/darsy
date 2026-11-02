@@ -50,6 +50,9 @@ python Run2IMDP.py --model <model_name>    # Two-layer IMDP abstraction
 
 Both share the run pipeline in `core/pipeline.py` and the command-line options. `Run2IMDP.py` builds a coarse layer controlled by `--coarse_factor` and uses JAX value iteration. `--solver storm` and policy iteration apply to `RunIMDP.py` only.
 
+Both entrypoints use a full `DensePartition` with grid edges aligned to labeled regions.
+`Run2IMDP.py` groups those fine cells into a `CoarsePartition` for its second layer.
+
 `RunHelper.py` is a convenience launcher for local experimentation: set `ABSTRACTION` to `"IMDP"` or `"2IMDP"` and enable the desired `run(...)` line to replay a fixed configuration.
 
 # Available benchmarks

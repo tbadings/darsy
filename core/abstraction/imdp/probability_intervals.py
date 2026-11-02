@@ -236,7 +236,7 @@ def compute_probability_intervals(args, model, partition, actions, coarse_partit
 
     # Get shapes of cells and actions
     num_cells = len(partition.regions['lower_bounds'])
-    all_actions = partition.regions['actions']  # (1 or num_cells, num_actions, action_dim)
+    all_actions = partition.regions['actions']  # (1, num_actions, action_dim)
     num_actions = all_actions.shape[1]
 
     # Fine cells + sink (+ coarse blocks) per (cell, action)

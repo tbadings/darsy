@@ -319,10 +319,7 @@ def extract_policy_inputs(args, partition, policy, nr_states):
 
     n_states = nr_states - 1
 
-    # DensePartition stores actions as
-    # (1, n_actions, control_dim).
-    # SparsePartition stores them as
-    # (n_states, n_actions, control_dim).
+    # Broadcast the shared (1, n_actions, control_dim) action grid across states.
     actions_np = np.broadcast_to(
         actions_np,
         (n_states, *actions_np.shape[1:])

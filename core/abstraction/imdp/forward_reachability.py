@@ -107,7 +107,7 @@ class RectangularForward:
                                         args.frs_num_samples, args.alpha, partition, lipschitz)
 
         num_cells = len(partition.regions['lower_bounds'])
-        all_actions = partition.regions['actions']  # (1 or num_cells, num_actions, action_dim)
+        all_actions = partition.regions['actions']  # (1, num_actions, action_dim)
         num_actions = all_actions.shape[1]
         dim = partition.dimension
 

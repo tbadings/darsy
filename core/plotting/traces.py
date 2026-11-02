@@ -595,48 +595,6 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
 
 
 
-# Mark missing projected states (from sparse partitions) with a thin red X.
-
-    idxs = np.asarray(partition.state_id2idx, dtype=int)
-
-    existing_proj = {tuple(v.tolist()) for v in idxs[:, [i1, i2]]}
-
-    w1 = float(partition.cell_width[i1])
-
-    w2 = float(partition.cell_width[i2])
-
-    x0 = float(partition.boundary_lb[i1])
-
-    y0 = float(partition.boundary_lb[i2])
-
-
-
-    for ix in range(partition.number_per_dim[i1]):
-
-        for iy in range(partition.number_per_dim[i2]):
-
-            if (ix, iy) in existing_proj:
-
-                continue
-
-
-
-            x_low = x0 + ix * w1
-
-            x_high = x_low + w1
-
-            y_low = y0 + iy * w2
-
-            y_high = y_low + w2
-
-
-
-            ax.plot([x_low, x_high], [y_low, y_high], color='red', linewidth=0.4, alpha=1.0, zorder=4)
-
-            ax.plot([x_low, x_high], [y_high, y_low], color='red', linewidth=0.4, alpha=1.0, zorder=4)
-
-
-
 # Plot boundary of unsafe regions if requested
 
     if add_unsafe_box:
