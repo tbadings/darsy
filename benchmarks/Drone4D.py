@@ -4,9 +4,7 @@ import numpy as np
 
 
 class Drone4D(DroneDynamics):
-    '''
-    Drone benchmark, with a 4D state space and a 2D control input space.
-    '''
+    """Planar double-integrator drone benchmark with two position and two velocity states and two acceleration controls."""
 
     def __init__(self, args):
         DroneDynamics.__init__(self, args)
@@ -16,14 +14,12 @@ class Drone4D(DroneDynamics):
         self.set_spec()
 
     def set_spec(self):
-        '''
-        Set the abstraction parameters and the reach-avoid specification.
-        '''
+        """Configure actions, partition, labeled regions, and specification."""
 
         self.partition = {}
         self.targets = {}
 
-        # Authority limit for the control u, both positive and negative
+        # Discrete control grid: bounds and samples per input dimension.
         self.uMin = [-1, -1]
         self.uMax = [1 ,1]
         self.num_actions = [5, 5]
@@ -31,14 +27,17 @@ class Drone4D(DroneDynamics):
         v_min = self.v_min
         v_max = self.v_max
 
+        # State-space bounds used for abstraction.
         self.partition['boundary'] = np.array([[-20.0, v_min, -20.0, v_min], [20.0, v_max, 20.0, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
+        # Nominal partition resolution along each state dimension.
         self.partition['number_per_dim'] = np.array([80, 10, 80, 10])
 
         # --------------------------------------------------
         # Regions of interest
         # --------------------------------------------------
 
+        # Each region is a union of boxes with shape (N, 2, state_dim).
         self.regions = {
                     "r_goal": np.array([
                     [[12.0, v_min, 12.0, v_min], [18.0, v_max, 18.0, v_max]]
@@ -56,7 +55,7 @@ class Drone4D(DroneDynamics):
                     ], dtype=float)
                 }
 
-        # Preserve compatibility with reach-avoid synthesis
+        # Expose goal/unsafe geometry for the reach-avoid solver interface.
         self.goal = self.regions["r_goal"]
         self.critical = self.regions["r_unsafe"]
 
@@ -73,19 +72,19 @@ class Drone4D(DroneDynamics):
         # Labeling function L: R -> 2^AP
         # --------------------------------------------------
 
+        # Assign atomic propositions to each named region of interest.
         self.labels = {
             "r_goal": {"goal"},
             "r_unsafe": {"unsafe"}
         }
 
         # --------------------------------------------------
-        # sc-LTL specification
+        # Temporal-logic specification (reach-avoid or general scLTL)
         # --------------------------------------------------
 
         self.specification = (
             "(!unsafe) U (goal)"
         )
-        # self.specification = ("(!unsafe) U goal")
 
         # --------------------------------------------------
         # Initial condition
@@ -95,23 +94,8 @@ class Drone4D(DroneDynamics):
         self.x0 = np.array([-15.0, 0.01, -15.0, 0.01])
 
     def labeling_function(self, r):
-                    """
-                    Return the atomic propositions that hold
-                    in region r.
-            
-                    Parameters
-                    ----------
-                    r : str
-                        Identifier of a region of interest.
-            
-                    Returns
-                    -------
-                    set[str]
-                        Atomic propositions true in region r.
-                    """
-            
-                    if r not in self.regions:
-                        raise ValueError(f"Unknown region: {r}")
-            
-                    return self.labels[r]
+        """Return the atomic propositions assigned to a named region."""
+        if r not in self.regions:
+            raise ValueError(f"Unknown region: {r}")
+        return self.labels[r]
             

@@ -90,13 +90,12 @@ class Dubins2D_scLTL(DubinsDynamics2D):
             "((!unsafe) & (!wet | ((!goal) U carpet))) "
             "U (goal & (!unsafe))"
         )
-        # self.specification = ("(!unsafe) U goal")
-
+        
         # --------------------------------------------------
         # Initial condition
         # --------------------------------------------------
 
-        self.x0 = np.array([0.05, 0.95])
+        self.x0 = np.array([-9.0, 9.0])
 
     def labeling_function(self, r):
             """

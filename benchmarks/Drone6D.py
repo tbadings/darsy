@@ -4,9 +4,7 @@ import numpy as np
 
 
 class Drone6D(DroneDynamics):
-    '''
-    Drone benchmark, with a 6D state space and a 3D control input space.
-    '''
+    """Three-dimensional double-integrator drone benchmark with three positions, three velocities, and three acceleration controls."""
 
     def __init__(self, args):
         DroneDynamics.__init__(self, args, dim=3)
@@ -18,14 +16,12 @@ class Drone6D(DroneDynamics):
         self.set_spec()
 
     def set_spec(self):
-        '''
-        Set the abstraction parameters and the reach-avoid specification.
-        '''
+        """Configure actions, partition, labeled regions, and specification."""
 
         self.partition = {}
         self.targets = {}
 
-        # Authority limit for the control u, both positive and negative
+        # Discrete control grid: bounds and samples per input dimension.
         self.uMin = [-1, -1, -1]
         self.uMax = [1, 1, 1]
         self.num_actions = [5, 5, 5]
@@ -33,9 +29,11 @@ class Drone6D(DroneDynamics):
         v_min = self.v_min
         v_max = self.v_max
 
+        # State-space bounds used for abstraction.
         self.partition['boundary'] = np.array([[-17, v_min, -9, v_min, -7, v_min], 
                                                [17, v_max, 9, v_max, 7, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
+        # Nominal partition resolution along each state dimension.
         self.partition['number_per_dim'] = np.array([68, 14, 36, 14, 28, 14])
 
         
@@ -43,6 +41,7 @@ class Drone6D(DroneDynamics):
         # Regions of interest
         # --------------------------------------------------
 
+        # Each region is a union of boxes with shape (N, 2, state_dim).
         self.regions = {
                     "r_goal": np.array([
             [[11, v_min, 1, v_min, -7, v_min], [15, v_max, 5, v_max, -3, v_max]]
@@ -54,19 +53,19 @@ class Drone6D(DroneDynamics):
                         [[-11, v_min, 5, v_min, -5, v_min], [-5, v_max, 9, v_max, 5, v_max]],
                         [[-11, v_min, -1, v_min, -5, v_min], [-5, v_max, 3, v_max, 3, v_max]],
 
-                        # # Hole 2
+                        # Hole 2
                         [[-1, v_min, 1, v_min, -7, v_min], [3, v_max, 9, v_max, -1, v_max]],
                         [[-1, v_min, 1, v_min, 3, v_min], [3, v_max, 9, v_max, 5, v_max]],
                         [[-1, v_min, 1, v_min, -1, v_min], [3, v_max, 3, v_max, 3, v_max]],
                         [[-1, v_min, 7, v_min, -1, v_min], [3, v_max, 9, v_max, 3, v_max]],
 
-                        # # Tower
+                        # Tower
                         [[-1, v_min, -3, v_min, -7, v_min], [3, v_max, 1, v_max, 7, v_max]],
 
-                        # # Wall between routes
+                        # Wall between routes
                         [[3, v_min, -3, v_min, -7, v_min], [9, v_max, 1, v_max, -1, v_max]],
 
-                        # # Long route obstacles
+                        # Long route obstacles
                         # [[-11, v_min, -5, v_min, -7, v_min], [-7, v_max, -1, v_max, 1, v_max]],
                         [[-1, v_min, -9, v_min, -7, v_min], [3, v_max, -3, v_max, -5, v_max]],
 
@@ -81,7 +80,7 @@ class Drone6D(DroneDynamics):
                         ], dtype=float)
                 }
 
-        # Preserve compatibility with reach-avoid synthesis
+        # Expose goal/unsafe geometry for the reach-avoid solver interface.
         self.goal = self.regions["r_goal"]
         self.critical = self.regions["r_unsafe"]
 
@@ -98,19 +97,19 @@ class Drone6D(DroneDynamics):
         # Labeling function L: R -> 2^AP
         # --------------------------------------------------
 
+        # Assign atomic propositions to each named region of interest.
         self.labels = {
             "r_goal": {"goal"},
             "r_unsafe": {"unsafe"}
         }
 
         # --------------------------------------------------
-        # sc-LTL specification
+        # Temporal-logic specification (reach-avoid or general scLTL)
         # --------------------------------------------------
 
         self.specification = (
             "(!unsafe) U (goal)"
         )
-        # self.specification = ("(!unsafe) U goal")
 
         # --------------------------------------------------
         # Initial condition
@@ -120,32 +119,15 @@ class Drone6D(DroneDynamics):
         self.x0 = np.array([-14.5, 0.01, 6, 0.01, 2, 0.01])
 
     def labeling_function(self, r):
-                    """
-                    Return the atomic propositions that hold
-                    in region r.
-            
-                    Parameters
-                    ----------
-                    r : str
-                        Identifier of a region of interest.
-            
-                    Returns
-                    -------
-                    set[str]
-                        Atomic propositions true in region r.
-                    """
-            
-                    if r not in self.regions:
-                        raise ValueError(f"Unknown region: {r}")
-            
-                    return self.labels[r]
+        """Return the atomic propositions assigned to a named region."""
+        if r not in self.regions:
+            raise ValueError(f"Unknown region: {r}")
+        return self.labels[r]
 
 
 
 class Drone6D_small(DroneDynamics):
-    '''
-    Drone benchmark, with a 6D state space and a 3D control input space.
-    '''
+    """Reduced-domain three-dimensional drone benchmark with three acceleration controls."""
 
     def __init__(self, args):
         DroneDynamics.__init__(self, args, dim=3)
@@ -157,14 +139,12 @@ class Drone6D_small(DroneDynamics):
         self.set_spec()
 
     def set_spec(self):
-        '''
-        Set the abstraction parameters and the reach-avoid specification.
-        '''
+        """Configure actions, partition, labeled regions, and specification."""
 
         self.partition = {}
         self.targets = {}
 
-        # Authority limit for the control u, both positive and negative
+        # Discrete control grid: bounds and samples per input dimension.
         self.uMin = [-1, -1, -1]
         self.uMax = [1, 1, 1]
         self.num_actions = [5, 5, 5]
@@ -172,10 +152,13 @@ class Drone6D_small(DroneDynamics):
         v_min = self.v_min
         v_max = self.v_max
 
+        # State-space bounds used for abstraction.
         self.partition['boundary'] = np.array([[-7, v_min, -7, v_min, -7, v_min], [7, v_max, 7, v_max, 7, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
+        # Nominal partition resolution along each state dimension.
         self.partition['number_per_dim'] = np.array([14, 10, 14, 10, 14, 10])
 
+        # Goal and unsafe sets for the reduced benchmark.
         self.goal = np.array([
             [[3, v_min, 3, v_min, -7, v_min], [7, v_max, 7, v_max, 7, v_max]]
         ], dtype=float)
