@@ -98,6 +98,32 @@ def save_checkpoint(args, key, model, partition, abstraction):
     logger.info('Checkpoint saved.\n')
 
 
+def is_safety(formula):
+    """Recognize the finite-horizon safety specification G(safe)."""
+    return bool(re.fullmatch(r"G\(safe\)", re.sub(r"\s+", "", formula)))
+
+
+def safe_state_mask(partition, safe_set, *, optimistic=False):
+    """Conservatively label cells fully contained in a union of safe boxes."""
+    boxes = np.asarray(safe_set, dtype=float)
+    lo = np.asarray(partition.regions['lower_bounds'])
+    hi = np.asarray(partition.regions['upper_bounds'])
+    d = lo.shape[1]
+    if boxes.ndim == 2 and boxes.shape == (2, d):
+        boxes = boxes[None, :, :]
+    if boxes.ndim != 3 or boxes.shape[1:] != (2, d) or not len(boxes):
+        raise ValueError('safe_set must have shape (n_boxes, 2, dimension)')
+    if np.any(boxes[:, 0, :] >= boxes[:, 1, :]):
+        raise ValueError('safe_set boxes must have positive side lengths')
+    mask = np.zeros(len(lo), dtype=bool)
+    for a, b in boxes:
+        if optimistic:
+            mask |= np.all(lo < b, axis=1) & np.all(hi > a, axis=1)
+        else:
+            mask |= np.all(lo >= a, axis=1) & np.all(hi <= b, axis=1)
+    return mask
+
+
 def is_reach_avoid(formula):
     """
     Check whether the specification is exactly
@@ -167,6 +193,8 @@ def prepare_abstraction(args, stamp, name, build):
             )
 
         model = ckpt['model']
+        if is_safety(getattr(model, 'specification', None)):
+            set_safety_horizon(args, model)
         partition = ckpt['partition']
         abstraction = ckpt[key]
 
@@ -194,37 +222,25 @@ def prepare_abstraction(args, stamp, name, build):
     model = benchmarks.create_model(args)
     logger.info('<<< Generating model took %.3f sec. >>>\n', time.time() - t)
 
-    # Check that the specification is scLTL
-    formula = getattr(model, "specification", None)
-    regions = getattr(model, "regions", None)
-    labels = getattr(model, "labels", None)
-    atomic_propositions = getattr(model, "atomic_propositions", None)
-    
+    formula = getattr(model, 'specification', None)
     if formula is None:
-        raise ValueError(
-            "The benchmark does not define a specification."
-        )
-    else:
-        reach_avoid = is_reach_avoid(formula)
-        if reach_avoid & ("r_goal" not in regions or "r_unsafe" not in regions):
-            raise ValueError("If the specification is reach-avoid, model.regions must contain 'r_goal' "
-                    "and 'r_unsafe'.")
-        if  "goal" not in atomic_propositions or "unsafe" not in atomic_propositions:
-            raise ValueError("If the specification is reach-avoid, model.atomic_propositions must contain " \
-                    "'goal' and 'unsafe'.")
-        if "r_goal" not in labels or "r_unsafe" not in labels:
-            raise ValueError("If the specification is reach-avoid, model.labels must contain " \
-                                "'goal' and 'unsafe'.")
-        if ("goal" not in labels.get("r_goal", set()) or "unsafe" not in labels.get("r_unsafe", set())):
-            raise ValueError(
-                "self.labels must map 'r_goal' to {'goal'} and 'r_unsafe' to {'unsafe'}."
-            )
-        scLTL = is_scLTL(formula)
-        if not (reach_avoid | scLTL):
-            raise ValueError(
-                "ERROR: invalid specification. The specification must be" \
-                " reach-avoid or co-safe (scLTL). "
-                )
+        raise ValueError('The benchmark does not define a specification.')
+    if is_safety(formula):
+        if getattr(model, 'safe_set', None) is None:
+            raise ValueError('G(safe) requires model.safe_set.')
+        set_safety_horizon(args, model)
+    elif is_reach_avoid(formula):
+        regions = getattr(model, 'regions', {})
+        labels = getattr(model, 'labels', {})
+        aps = getattr(model, 'atomic_propositions', ())
+        if not {'r_goal', 'r_unsafe'} <= set(regions):
+            raise ValueError('Reach-avoid requires r_goal and r_unsafe regions.')
+        if not {'goal', 'unsafe'} <= set(aps):
+            raise ValueError('Reach-avoid requires goal and unsafe propositions.')
+        if 'goal' not in labels.get('r_goal', ()) or 'unsafe' not in labels.get('r_unsafe', ()):
+            raise ValueError('Invalid reach-avoid region labels.')
+    elif not is_scLTL(formula):
+        raise ValueError('Specification must be reach-avoid, scLTL, or G(safe).')
 
     t = time.time()
 
@@ -574,3 +590,119 @@ def report_scLTL(args, stamp, model, partition, V_lower, policy, dfa, labels,
                    num_traces=num_traces, filename='scLTL_traces_3d',
                    labeled_regions=True)
     return failures
+
+def set_safety_horizon(args, model):
+    """Take the finite safety horizon exclusively from the benchmark."""
+    horizon = getattr(model, 'horizon', None)
+    if isinstance(horizon, (bool, np.bool_)) or not isinstance(horizon, (int, np.integer)) or horizon < 0:
+        raise ValueError('G(safe) requires a nonnegative integer model.horizon.')
+    if getattr(model, 'safe_set', None) is None:
+        raise ValueError('G(safe) requires model.safe_set.')
+    args.horizon = int(horizon)  # compatibility with the existing safety solvers
+    return args.horizon
+
+
+def report_safety(args, stamp, model, partition, V_lower, V_upper, policy,
+                  *, iterations=100, num_traces=10):
+    """Save safety value heatmaps, MC trajectories and MC outcome plots."""
+    import matplotlib.pyplot as plt
+    from core.plotting.heatmap import heatmap
+
+    failures = []
+    H = set_safety_horizon(args, model)
+    boxes = np.asarray(model.safe_set, dtype=float)
+    if boxes.ndim == 2:
+        boxes = boxes[None, :, :]
+    n_states = len(partition.regions['idxs'])
+    actions = np.broadcast_to(
+        np.asarray(partition.regions['actions']),
+        (n_states, *np.asarray(partition.regions['actions']).shape[1:]),
+    )
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Same heatmap routine, timestamp and output directory as other benchmarks.
+    for filename, values in (
+        ('safety_lower', V_lower[H]),
+        ('safety_upper', V_upper[H]),
+    ):
+        _guard(filename + ' heatmap', failures, heatmap,
+               args, stamp, idx_show=model.plot_dimensions,
+               partition=partition, results=values, filename=filename)
+
+    # Sample trajectories under the time-dependent policy sigma[remaining_steps, state].
+    noise = np.asarray(model.noise.sample(size=(iterations, H))) if H else None
+    successes = np.zeros(iterations, dtype=bool)
+    traces = []
+    for run in range(iterations):
+        x = np.asarray(model.x0, dtype=float).copy()
+        trajectory = [x.copy()]
+        success = True
+        for k in range(H + 1):
+            if not any(np.all(x >= lo) and np.all(x <= hi) for lo, hi in boxes):
+                success = False
+                break
+            state, exists = partition.x2state(x)
+            if not exists:
+                success = False
+                break
+            if k == H:
+                break
+            a = int(policy[H - k, int(state)])
+            if a < 0:
+                success = False
+                break
+            x = np.asarray(model.step(x, actions[int(state), a], noise[run, k]))
+            trajectory.append(x.copy())
+        successes[run] = success
+        if run < num_traces:
+            traces.append((np.asarray(trajectory), success))
+
+    probability = float(successes.mean())
+    np.savez_compressed(
+        args.output_dir / 'safety_monte_carlo.npz',
+        successes=successes, satprob=probability, horizon=H,
+        traces=np.array([t for t, _ in traces], dtype=object),
+    )
+    logger.info('Finite-horizon safety empirical probability (%d runs): %.6f',
+                iterations, probability)
+
+    def save_figure(fig, filename):
+        for extension in ('png', 'pdf'):
+            fig.savefig(args.output_dir / f'{filename}_{stamp}.{extension}',
+                        bbox_inches='tight')
+        plt.close(fig)
+
+    fig, ax = plt.subplots()
+    ax.bar(['Safe', 'Unsafe'], [int(successes.sum()), int((~successes).sum())])
+    ax.set_ylabel('Monte Carlo runs')
+    ax.set_title(f'Safety over {H} transitions: {probability:.3f}')
+    save_figure(fig, 'safety_mc_outcomes')
+
+    dims = np.atleast_1d(np.asarray(model.plot_dimensions, dtype=int))
+    if len(dims) in (1, 2) and traces:
+        fig, ax = plt.subplots()
+        for trajectory, success in traces:
+            color = 'tab:blue' if success else 'tab:red'
+            if len(dims) == 1:
+                ax.plot(np.arange(len(trajectory)), trajectory[:, dims[0]],
+                        color=color, alpha=0.65)
+            else:
+                ax.plot(trajectory[:, dims[0]], trajectory[:, dims[1]],
+                        color=color, alpha=0.65)
+        if len(dims) == 1:
+            ax.set(xlabel='Time step', ylabel=f'x[{dims[0]}]')
+            for lo, hi in boxes:
+                ax.axhspan(lo[dims[0]], hi[dims[0]], color='green', alpha=0.08)
+        else:
+            from matplotlib.patches import Rectangle
+            ax.set(xlabel=f'x[{dims[0]}]', ylabel=f'x[{dims[1]}]')
+            for lo, hi in boxes:
+                xy = lo[dims]
+                wh = hi[dims] - xy
+                ax.add_patch(Rectangle(xy, *wh, fill=False,
+                                       edgecolor='green', linewidth=1.5))
+        ax.set_title('Safety Monte Carlo trajectories (blue: safe, red: unsafe)')
+        save_figure(fig, 'safety_mc_traces')
+    if failures:
+        logger.error('Safety plotting failures: %s', ', '.join(failures))
+    return probability
