@@ -202,8 +202,7 @@ def prepare_abstraction(args, stamp, name, build):
             )
 
         model = ckpt['model']
-        if is_safety(getattr(model, 'specification', None)):
-            set_safety_horizon(args, model)
+        set_horizon(args, model)
         partition = ckpt['partition']
         abstraction = attach_region_data(ckpt[key], model, partition)
 
@@ -237,7 +236,6 @@ def prepare_abstraction(args, stamp, name, build):
     if is_safety(formula):
         if getattr(model, 'safe_set', None) is None:
             raise ValueError('G(safe) requires model.safe_set.')
-        set_safety_horizon(args, model)
     elif is_reach_avoid(formula):
         regions = getattr(model, 'regions', {})
         labels = getattr(model, 'labels', {})
@@ -250,6 +248,7 @@ def prepare_abstraction(args, stamp, name, build):
             raise ValueError('Invalid reach-avoid region labels.')
     elif not is_scLTL(formula):
         raise ValueError('Specification must be reach-avoid, scLTL, or G(safe).')
+    set_horizon(args, model)
 
     t = time.time()
 
@@ -273,13 +272,14 @@ def prepare_abstraction(args, stamp, name, build):
     return model, partition, abstraction
 
 
-def extract_policy_inputs(args, partition, policy, nr_states):
+def extract_policy_inputs(args, partition, policy, nr_states, *, time_indexed=False):
     """
     Map action indices to continuous control inputs.
 
     Supports:
-        Reach-avoid: policy[s]
-        sc-LTL:      policy[s, z]
+        Reach-avoid:                policy[s]
+        Finite-horizon reach-avoid: policy[h, s]
+        sc-LTL:                     policy[s, z]
 
     Parameters
     ----------
@@ -292,10 +292,15 @@ def extract_policy_inputs(args, partition, policy, nr_states):
     policy : np.ndarray
         Global action indices. Shape:
             (nr_states,) for reach-avoid
+            (H+1, nr_states) for finite-horizon reach-avoid, where h is the number of remaining steps
             (nr_states, n_dfa_states) for sc-LTL
 
     nr_states : int
         Number of IMDP states, including the absorbing state.
+
+    time_indexed : bool
+        Whether policy is a finite-horizon reach-avoid policy, which has the same number of
+        dimensions as an sc-LTL policy.
 
     Returns
     -------
@@ -305,11 +310,17 @@ def extract_policy_inputs(args, partition, policy, nr_states):
         Reach-avoid:
             (nr_states - 1, control_dim)
 
+        Finite-horizon reach-avoid:
+            (H+1, nr_states - 1, control_dim)
+
         sc-LTL:
             (nr_states - 1, n_dfa_states, control_dim)
 
         States without an enabled action contain NaN.
     """
+
+    if time_indexed:
+        return np.stack([extract_policy_inputs(args, partition, p, nr_states) for p in policy])
 
     float_dtype = args.floatprecision
 
@@ -415,7 +426,8 @@ def _guard(description, failures, fn, *fn_args, **fn_kwargs):
         return None
 
 
-def report(args, stamp, model, partition, V, policy, policy_inputs, iterations=100, num_traces=10):
+def report(args, stamp, model, partition, V, policy, policy_inputs, iterations=100, num_traces=10,
+           sim_horizon=1000):
     '''
     Validate the synthesised policy by simulation and write the figures for this run.
 
@@ -427,11 +439,14 @@ def report(args, stamp, model, partition, V, policy, policy_inputs, iterations=1
     :param stamp: Run timestamp.
     :param model: Benchmark model.
     :param partition: Partition of the continuous state space.
-    :param V: Value function over the abstraction states.
-    :param policy: Action index per state.
-    :param policy_inputs: Control input per state, from extract_policy_inputs.
+    :param V: Value function over the abstraction states; with a horizon H, of shape (H+1, S+1),
+        where index h is the number of remaining steps.
+    :param policy: Action index per state; with a horizon, indexed by remaining steps like V.
+    :param policy_inputs: Control input per state, from extract_policy_inputs; with a horizon,
+        indexed by remaining steps like V.
     :param iterations: Number of Monte Carlo simulations to run.
     :param num_traces: Number of simulated traces to draw in the trace plots.
+    :param sim_horizon: Number of simulated steps without a horizon; with a horizon H, exactly H.
     :return: List of descriptions of the steps that failed (empty if all succeeded).
     '''
 
@@ -441,9 +456,16 @@ def report(args, stamp, model, partition, V, policy, policy_inputs, iterations=1
 
     failures = []
 
+    # With a horizon H, the simulator indexes by elapsed steps k = H - h, and the heatmaps show
+    # the values and controls with all H steps remaining
+    sim_policy, sim_inputs = policy, policy_inputs
+    if np.ndim(policy) == 2:
+        sim_policy, sim_inputs, sim_horizon = policy[::-1], policy_inputs[::-1], len(policy) - 1
+        V, policy_inputs = V[-1], policy_inputs[-1]
+
     sim = _guard('Monte Carlo simulation', failures, MonteCarloSim,
-                 model, partition, policy, policy_inputs, model.x0,
-                 verbose=False, iterations=iterations)
+                 model, partition, sim_policy, sim_inputs, model.x0,
+                 verbose=False, iterations=iterations, sim_horizon=sim_horizon)
     if sim is not None:
         logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
 
@@ -594,10 +616,35 @@ def report_scLTL(args, stamp, model, partition, V_lower, policy, dfa, labels,
                    labeled_regions=True)
     return failures
 
+def _is_horizon(horizon):
+    """Whether horizon is a nonnegative integer (booleans excluded)."""
+    return (isinstance(horizon, (int, np.integer)) and not isinstance(horizon, (bool, np.bool_))
+            and horizon >= 0)
+
+
+def set_horizon(args, model):
+    """Take the horizon exclusively from the benchmark: model.horizon, or None (unbounded) if unset.
+
+    G(safe) requires a horizon and reach-avoid may have one; scLTL is only solved unbounded.
+    """
+    formula = getattr(model, 'specification', None) or ''
+    if is_safety(formula):
+        return set_safety_horizon(args, model)
+    horizon = getattr(model, 'horizon', None)
+    if horizon is not None:
+        if not is_reach_avoid(formula):
+            raise ValueError('model.horizon is only supported for reach-avoid and G(safe).')
+        if not _is_horizon(horizon):
+            raise ValueError('model.horizon must be a nonnegative integer.')
+        horizon = int(horizon)
+    args.horizon = horizon
+    return horizon
+
+
 def set_safety_horizon(args, model):
     """Take the finite safety horizon exclusively from the benchmark."""
     horizon = getattr(model, 'horizon', None)
-    if isinstance(horizon, (bool, np.bool_)) or not isinstance(horizon, (int, np.integer)) or horizon < 0:
+    if not _is_horizon(horizon):
         raise ValueError('G(safe) requires a nonnegative integer model.horizon.')
     if getattr(model, 'safe_set', None) is None:
         raise ValueError('G(safe) requires model.safe_set.')

@@ -8,12 +8,9 @@ import time
 import jax
 import numpy as np
 
-from core.abstraction.imdp.robust_vi_2layer import (
-    preprocess_2imdp, robust_max_reach_probability_2layer_jax)
-from core.abstraction.imdp.robust_vi_2layer_dfa import (
-    encode_imdp_labels, robust_scLTL_synthesis_2layer_jax, initial_product_state)
+from core.abstraction.imdp.robust_dp import (
+    encode_imdp_labels, initial_product_state, solve_reach_avoid, solve_safety, solve_scLTL)
 from core.automaton.dfa import scLTL_to_DFA
-from core.abstraction.imdp.rvi_jax_safety import safety_imdp_jax, safety_2imdp_jax
 from core.options import parse_arguments
 from core.pipeline import (
     configure_run,
@@ -40,29 +37,14 @@ def build_2imdp(args, model, partition, s_init):
 
 
 def solve_2imdp(args, imdp, s0):
+    """Return lower and upper values, and a global-action policy, indexed by remaining steps with a horizon."""
     if args.solver != 'jax':
         raise ValueError('The 2I-MDP solver currently supports only --solver jax.')
-    if args.policy_iteration:
-        logger.warning('2I-MDP solver uses value iteration; --policy_iteration is ignored.')
-
-    ns = imdp.nr_states
-    enabled = np.array([s for s in imdp.states
-                        if not imdp.goal_regions[s] and not imdp.critical_regions[s]
-                        and len(imdp.A_id.get(int(s), [])) > 0], dtype=np.int32)
-    target = np.flatnonzero(imdp.goal_regions).astype(np.int32)
-    max_actions = max((len(imdp.A_id.get(int(s), [])) for s in enabled), default=0)
-    data_prep = preprocess_2imdp(imdp, enabled, max_actions, args.floatprecision)
     with jax.default_device(args.rvi_device):
-        V_lower, V_upper, local_policy = robust_max_reach_probability_2layer_jax(
-            data_prep, target, ns, float_dtype=args.floatprecision,
-            epsilon=1e-6, max_iter=10000)
-
-    # The solver returns local action indices, while the run pipeline expects
-    # global action labels (indices into partition.regions['actions']).
-    policy = np.full(ns, -1, dtype=np.int32)
-    for s in enabled:
-        policy[s] = imdp.A_id[int(s)][int(local_policy[s])]
-    return V_lower, V_upper, policy
+        return solve_reach_avoid(
+            imdp, two_layer=True, initial_state=s0, horizon=args.horizon,
+            policy_iteration=args.policy_iteration, satprob=args.satprob,
+            float_dtype=args.floatprecision)
 
 
 def solve_2imdp_scLTL(args, imdp, s0, formula):
@@ -71,23 +53,11 @@ def solve_2imdp_scLTL(args, imdp, s0, formula):
         raise ValueError('sc-LTL 2IMDP synthesis requires --solver jax')
     dfa = scLTL_to_DFA(formula)
     labels = encode_imdp_labels(imdp, dfa)
-    enabled = np.asarray([
-        int(s) for s in imdp.states
-        if len(imdp.A_id.get(int(s), [])) > 0
-    ], dtype=np.int32)
-    max_actions = max((len(imdp.A_id[int(s)]) for s in enabled), default=0)
-    data_prep = preprocess_2imdp(imdp, enabled, max_actions, args.floatprecision)
     with jax.default_device(args.rvi_device):
-        lower, upper, local_policy = robust_scLTL_synthesis_2layer_jax(
-            data_prep, dfa, labels, float_dtype=args.floatprecision,
-            epsilon=1e-6, max_iter=10000
-        )
-    policy = np.full_like(local_policy, -1)
-    for s in enabled:
-        for z in range(policy.shape[1]):
-            a = int(local_policy[s, z])
-            if a >= 0:
-                policy[s, z] = int(imdp.A_id[int(s)][a])
+        lower, upper, policy = solve_scLTL(
+            imdp, dfa, labels, two_layer=True, initial_state=s0,
+            policy_iteration=args.policy_iteration, satprob=args.satprob,
+            float_dtype=args.floatprecision)
     _, z0 = initial_product_state(s0, dfa, labels)
     return lower, upper, policy, dfa, z0, labels
 
@@ -153,7 +123,8 @@ if __name__ == '__main__':
         mask = safe_state_mask(partition, model.safe_set)
         upper_mask = safe_state_mask(partition, model.safe_set, optimistic=True)
         with jax.default_device(args.rvi_device):
-            V_lower, V_upper, policy = safety_2imdp_jax(abstraction, mask, args.horizon, args.floatprecision, upper_mask)
+            V_lower, V_upper, policy = solve_safety(abstraction, mask, upper_mask, args.horizon,
+                                                    two_layer=True, float_dtype=args.floatprecision)
         save_safety_results(args, s0, V_lower, V_upper, policy)
         report_safety(args, stamp, model, partition, V_lower, V_upper, policy)
 
@@ -170,11 +141,14 @@ if __name__ == '__main__':
             s0
         )
 
+        # With a horizon, report the values with all steps remaining
+        at = s0 if args.horizon is None else (args.horizon, s0)
+
         logger.info(
             "Initial state s0=%d: lower=%.6f, upper=%.6f",
             s0,
-            V_lower[s0],
-            V_upper[s0]
+            V_lower[at],
+            V_upper[at]
         )
 
         # Convert action indices to continuous inputs
@@ -182,7 +156,8 @@ if __name__ == '__main__':
             args,
             partition,
             policy,
-            abstraction.nr_states
+            abstraction.nr_states,
+            time_indexed=args.horizon is not None
         )
 
         # Save synthesis results

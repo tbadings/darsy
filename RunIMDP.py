@@ -1,6 +1,7 @@
-"""Build an IMDP and synthesize reach-avoid or scLTL policies.
+"""Build an IMDP and synthesize reach-avoid, safety, or scLTL policies.
 
-For general scLTL, use a dedicated single-layer product-IMDP JAX solver.
+With --solver jax, all specifications are solved by the robust dynamic programming driver in
+core/abstraction/imdp/robust_dp.py.
 """
 import logging
 import time
@@ -11,17 +12,17 @@ import numpy as np
 from core.abstraction.imdp.forward_reachability import RectangularForward
 from core.abstraction.imdp.imdp import IMDP
 from core.abstraction.imdp.probability_intervals import compute_probability_intervals
-from core.abstraction.imdp.rvi_jax import RVI_JAX
 from core.abstraction.imdp.rvi_storm import RVI_STORM
-from core.abstraction.imdp.robust_vi_2layer_dfa import (
+from core.abstraction.imdp.robust_dp import (
     encode_imdp_labels,
     initial_product_state,
+    solve_reach_avoid,
+    solve_safety,
+    solve_scLTL,
 )
-from core.abstraction.imdp.rvi_jax_dfa import robust_scLTL_synthesis_imdp_jax
 from core.abstraction.model import attach_region_data
 from core.abstraction.partition import CoarsePartition
 from core.automaton.dfa import scLTL_to_DFA
-from core.abstraction.imdp.rvi_jax_safety import safety_imdp_jax, safety_2imdp_jax
 from core.options import parse_arguments
 from core.pipeline import (
     configure_run,
@@ -73,15 +74,18 @@ def build_imdp(args, model, partition, s_init, coarse_factor=1, use_coarse=False
 
 
 def solve_imdp(args, imdp, s0):
-    """Existing reach-avoid synthesis, unchanged."""
+    """Reach-avoid synthesis: lower-bound values and policy, indexed by remaining steps with a horizon."""
     if args.solver == 'jax':
         with jax.default_device(args.rvi_device):
-            return RVI_JAX(
-                args=args, imdp=imdp, s0=s0,
-                max_iterations=10000, epsilon=1e-6,
-                RND_SWEEPS=True, BATCH_SIZE=10000,
-                policy_iteration=args.policy_iteration,
+            lower, upper, policy = solve_reach_avoid(
+                imdp, initial_state=s0, horizon=args.horizon, policy_iteration=args.policy_iteration,
+                satprob=args.satprob, float_dtype=args.floatprecision,
             )
+        at = s0 if args.horizon is None else (args.horizon, s0)  # with all steps remaining
+        logger.info('Initial state s0=%d: upper bound=%.6f', s0, upper[at])
+        return lower, policy
+    if args.horizon is not None:
+        raise ValueError('Finite-horizon reach-avoid currently requires --solver jax')
     return RVI_STORM(args=args, imdp=imdp)
 
 
@@ -89,15 +93,13 @@ def solve_imdp_scLTL(args, imdp, s0, formula):
     """Product synthesis using only single-layer fine probability intervals."""
     if args.solver != 'jax':
         raise ValueError('scLTL IMDP synthesis currently requires --solver jax.')
-    if args.policy_iteration:
-        logger.warning('scLTL synthesis uses value iteration; policy iteration ignored.')
 
     dfa = scLTL_to_DFA(formula)
     labels = encode_imdp_labels(imdp, dfa)
     with jax.default_device(args.rvi_device):
-        lower, upper, policy = robust_scLTL_synthesis_imdp_jax(
-            imdp, dfa, labels, float_dtype=args.floatprecision,
-            epsilon=1e-6, max_iter=10000,
+        lower, upper, policy = solve_scLTL(
+            imdp, dfa, labels, initial_state=s0, policy_iteration=args.policy_iteration,
+            satprob=args.satprob, float_dtype=args.floatprecision,
         )
     _, z0 = initial_product_state(s0, dfa, labels)
     return lower, upper, policy, dfa, z0, labels
@@ -145,14 +147,16 @@ def main():
         mask = safe_state_mask(partition, model.safe_set)
         upper_mask = safe_state_mask(partition, model.safe_set, optimistic=True)
         with jax.default_device(args.rvi_device):
-            V_lower, V_upper, policy = safety_imdp_jax(imdp, mask, args.horizon, args.floatprecision, upper_mask)
+            V_lower, V_upper, policy = solve_safety(imdp, mask, upper_mask, args.horizon,
+                                                    float_dtype=args.floatprecision)
         save_safety_results(args, s0, V_lower, V_upper, policy)
         report_safety(args, stamp, model, partition, V_lower, V_upper, policy)
     elif reach_avoid:
         V, policy = solve_imdp(args, imdp, s0)
-        logger.info('Initial state s0=%d: value=%.6f', s0, V[s0])
+        at = s0 if args.horizon is None else (args.horizon, s0)  # with all steps remaining
+        logger.info('Initial state s0=%d: value=%.6f', s0, V[at])
         policy_inputs = extract_policy_inputs(
-            args, partition, policy, imdp.nr_states
+            args, partition, policy, imdp.nr_states, time_indexed=args.horizon is not None
         )
         report(args, stamp, model, partition, V, policy, policy_inputs)
     else:

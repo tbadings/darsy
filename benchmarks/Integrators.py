@@ -170,11 +170,8 @@ class DoubleIntegrator_scLTL(DoubleIntegratorDynamics):
         # Temporal-logic specification (reach-avoid or general scLTL)
         # --------------------------------------------------
 
-        self.specification = (
-            "F(goal) & G(!unsafe)"
-        )
-        # self.specification = ("F(goal) & G(!unsafe)")
-        # self.specification = "G(!unsafe)"
+        # Avoid unsafe states until reaching the goal; success ends the task.
+        self.specification = "(!unsafe) U (goal)"
 
         # --------------------------------------------------
         # Initial condition

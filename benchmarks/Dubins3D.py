@@ -4,12 +4,8 @@ import jax.numpy as jnp
 import numpy as np
 
 
-def wrap_theta(theta):
-    return (theta + np.pi) % (2 * np.pi) - np.pi
-
-
 class Dubins3D(DubinsDynamics3D):
-    """Dubins vehicle benchmark with planar position and heading states, controlled by turning rate and speed."""
+    """Unicycle reach-avoid benchmark with position and heading states."""
 
     def __init__(self, args):
         DubinsDynamics3D.__init__(self, args)
@@ -24,16 +20,16 @@ class Dubins3D(DubinsDynamics3D):
         self.partition = {}
         self.targets = {}
 
-        # Discrete control grid: bounds and samples per input dimension.
-        self.uMin = [-0.50 * np.pi, -3]
-        self.uMax = [0.50 * np.pi, 3]
-        self.num_actions = [7, 5]
+        # Steering rates {-pi/2, 0, pi/2} and velocities {-1, 0, 1}.
+        self.uMin = [-0.50 * np.pi, -1]
+        self.uMax = [0.50 * np.pi, 1]
+        self.num_actions = [3, 3]
 
         # State-space bounds used for abstraction.
-        self.partition['boundary'] = np.array([[-10, -10, -np.pi], [10, 10, np.pi]])
+        self.partition['boundary'] = np.array([[0, 0, -np.pi], [10, 10, np.pi]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
         # Nominal partition resolution along each state dimension.
-        self.partition['number_per_dim'] = 3 * np.array([20, 20, 11])
+        self.partition['number_per_dim'] = np.array([50, 50, 50])
 
         # --------------------------------------------------
         # Regions of interest
@@ -42,12 +38,12 @@ class Dubins3D(DubinsDynamics3D):
         # Each region is a union of boxes with shape (N, 2, state_dim).
         self.regions = {
                     "r_goal": np.array([
-                    [[-10, 5, -np.pi], [-5, 10, np.pi]]
+                    # Bottom-right corner, behind the wall.
+                    [[8, 0, -np.pi], [10, 2, np.pi]]
                     ], dtype=float),
 
                     "r_unsafe": np.array([
-                    [[-10, -1, -np.pi], [-1, 1, np.pi]],
-                    [[-1, -5, -np.pi], [1, 5, np.pi]]
+                    [[4.5, 0, -np.pi], [5.5, 7, np.pi]]
                     ], dtype=float)
                 }
         
@@ -82,7 +78,7 @@ class Dubins3D(DubinsDynamics3D):
             "(!unsafe) U (goal)"
         )
               
-        self.x0 = np.array([-7.5, -7.5, 0])
+        self.x0 = np.array([0.5, 0.5, 0])
 
     def labeling_function(self, r):
         """Return the atomic propositions assigned to a named region."""
@@ -106,16 +102,16 @@ class Dubins3D_scLTL(DubinsDynamics3D):
         self.partition = {}
         self.targets = {}
 
-        # Discrete control grid: bounds and samples per input dimension.
-        self.uMin = [-0.50 * np.pi, -3]
-        self.uMax = [0.50 * np.pi, 3]
-        self.num_actions = [7, 5]
+        # Steering rates {-pi/2, 0, pi/2} and velocities {-1, 0, 1}.
+        self.uMin = [-0.50 * np.pi, -1]
+        self.uMax = [0.50 * np.pi, 1]
+        self.num_actions = [3, 3]
 
         # State-space bounds used for abstraction.
-        self.partition['boundary'] = np.array([[-10, -10, -np.pi], [10, 10, np.pi]])
+        self.partition['boundary'] = np.array([[0, 0, -np.pi], [10, 10, np.pi]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
         # Nominal partition resolution along each state dimension.
-        self.partition['number_per_dim'] = 3 * np.array([20, 20, 11])
+        self.partition['number_per_dim'] = np.array([50, 50, 50])
 
         # --------------------------------------------------
         # Regions of interest
@@ -124,19 +120,22 @@ class Dubins3D_scLTL(DubinsDynamics3D):
         # Each region is a union of boxes with shape (N, 2, state_dim).
         self.regions = {
             "r_goal": np.array([
-                [[-10, -10, -np.pi], [-6, -6, np.pi]]
+                # Bottom-right corner, behind the wall.
+                [[8, 0, -np.pi], [10, 2, np.pi]]
             ], dtype=float),
 
             "r_unsafe": np.array([
-                [[-2, -2, -np.pi], [2, 6, np.pi]]
+                [[4.5, 0, -np.pi], [5.5, 7, np.pi]]
             ], dtype=float),
 
             "r_wet": np.array([
-                [[-10, -2, -np.pi], [-6, 10, np.pi]]
+                # Upper-left strip on the approach to the wall opening.
+                [[0, 4, -np.pi], [2, 10, np.pi]]
             ], dtype=float),
 
             "r_carpet": np.array([
-                [[6, -10, -np.pi], [10, -6, np.pi]]
+                # Upper-right corner, reachable before entering the goal.
+                [[8, 8, -np.pi], [10, 10, np.pi]]
             ], dtype=float)
         }
         
@@ -176,7 +175,7 @@ class Dubins3D_scLTL(DubinsDynamics3D):
             "U (goal & (!unsafe))"
         )
               
-        self.x0 = np.array([-7.5, -7.5, 0])
+        self.x0 = np.array([0.5, 0.5, 0])
 
     def labeling_function(self, r):
         """Return the atomic propositions assigned to a named region."""
