@@ -71,7 +71,7 @@ def parse_arguments(argv=None):
     parser.add_argument('--alpha', type=_probability, default=0.00,
                         help="Coverage level for the FRS percentile interval. The FRS is the "
                              "[alpha/2, 100-alpha/2] percentile envelope of sampled next states.")
-    parser.add_argument('--pac_beta', type=_probability, default=0.05,
+    parser.add_argument('--pac_beta', type=_probability, default=0.001,
                         help="Confidence level for Clopper-Pearson PAC bounds on transition "
                              "probability intervals. Smaller values give wider, more conservative intervals.")
     parser.add_argument('--coarse_factor', type=_positive_int, default=3,
