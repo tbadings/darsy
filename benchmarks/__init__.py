@@ -8,6 +8,8 @@ from .Test1D import Test1D
 from .Temperature1D_reach import Temperature1D_reach
 from .Temperature1D_safety import Temperature1D_safety
 from .Temperature4D import Temperature4D
+from .Temperature3D import Temperature3D
+from .Temperature2D import Temperature2D
 
 
 def create_model(args):
