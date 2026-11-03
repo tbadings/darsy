@@ -26,6 +26,8 @@ def create_model(args):
         'Test1D': Test1D,
         'Temperature1D_reach': Temperature1D_reach,
         'Temperature1D_safety': Temperature1D_safety,
+        'Temperature2D': Temperature2D,
+        'Temperature3D': Temperature3D,
         'Temperature4D': Temperature4D,
     }
 
