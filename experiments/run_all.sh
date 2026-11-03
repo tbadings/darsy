@@ -26,7 +26,9 @@ bash experiments/run_benchmark.sh Temperature1D_safety   --seeds "0" --noise_dis
 bash experiments/run_benchmark.sh Temperature2D          --seeds "0" # Uses truncated Gaussian noise
 # Expected runtime: ~5 min (estimate; 1728 states x 8 actions)
 bash experiments/run_benchmark.sh Temperature3D          --seeds "0" # Uses truncated Gaussian noise
-# Expected runtime: ~30-60 min (rough estimate; 20736 states x 16 actions)
+
+
+# Expected runtime: ~4 h
 bash experiments/run_benchmark.sh Temperature4D          --seeds "0" # Uses truncated Gaussian noise
 
 
