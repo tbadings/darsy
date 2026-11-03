@@ -46,65 +46,107 @@ def _linear_ids(coords, strides, grid_shape, valid, wrap):
     return jnp.where(valid, ids, 0)  # invalid cells -> 0
 
 
-def _grid_index(edges_padded, x, side, number_per_dim, boundary_lb, period, wrap):
-    """Unclipped cell index per coordinate (-1 / n: outside the grid; counted in laps on wrapped dims).
+_MAX_BUCKETS = 1 << 20  # larger bucket tables (very thin cells) fall back to a binary search
 
-    A point on an edge goes to the cell below it for side='left', above it for side='right'.
+
+def _make_edge_search(edges):
+    """Search on fixed, strictly increasing edges: x -> (#(edges <= x) - 1, #(edges < x) - 1).
+
+    A point on an edge goes to the cell above it in the first index, below it in the second. Uses a
+    table of buckets no wider than the narrowest cell, holding per bucket the last edge half a bucket
+    below it: up to rounding of the bucket index, a point lies less than 1.5 buckets above that edge, so
+    at most 2 further edges can be at or below it.
     """
-    laps = jnp.where(wrap, jnp.floor((x - boundary_lb) / period), 0).astype(jnp.int32)
-    method = 'compare_all' if edges_padded.shape[-1] <= 32 else 'scan'  # few edges: compare all at once
-    search = jax.vmap(lambda e, v: jnp.searchsorted(e, v, side=side, method=method),
-                      in_axes=(0, -1), out_axes=-1)
-    local = search(edges_padded, x - laps * period) - 1
-    return (laps * number_per_dim + local).astype(jnp.int32)
+    edges = np.asarray(edges)
+    if np.any(np.diff(edges) <= 0):
+        raise ValueError('Grid edges must be strictly increasing.')
+    width = np.min(np.diff(edges))
+    num_buckets = int(np.ceil((edges[-1] - edges[0]) / width)) + 2  # with one bucket past either end
+
+    if num_buckets > _MAX_BUCKETS:
+        sorted_edges = jnp.asarray(edges)
+
+        def binary_search(x):
+            e = jax.lax.optimization_barrier(sorted_edges)  # else XLA constant-folds the first step over all of x
+            right = jnp.searchsorted(e, x, side='right', method='scan_unrolled').astype(jnp.int32) - 1
+            left = right - ((right >= 0) & (e[jnp.maximum(right, 0)] == x))  # x is the edge just below it
+            return right, left
+        return binary_search
+
+    bucket_lb = edges[0] + (np.arange(num_buckets) - 0.5) * width
+    starts = jnp.asarray(np.searchsorted(edges, bucket_lb, side='right') - 1, dtype=jnp.int32)
+    padded = jnp.asarray(np.append(edges, np.full(3, np.inf, dtype=edges.dtype)))  # 3 candidates past the end
+
+    def search(x):
+        bucket = jnp.clip(jnp.floor((x - edges[0]) / width), 0, num_buckets - 1).astype(jnp.int32)
+        start = starts[bucket]
+        candidates = [padded[start + t] for t in (1, 2, 3)]
+        right = start + sum((c <= x).astype(jnp.int32) for c in candidates)
+        left = start + sum((c < x).astype(jnp.int32) for c in candidates)
+        return right, left
+    return search
+
+
+def _grid_index(search, x, number_per_dim, boundary_lb, period):
+    """Cell index of each coordinate on a wrapped dim, counted in laps, for side='right' and side='left'."""
+    laps = jnp.floor((x - boundary_lb) / period).astype(jnp.int32)
+    right, left = search(x - laps * period)  # search from _make_edge_search
+    shift = laps * number_per_dim
+    return shift + right, shift + left
+
+
+def _contract(factors):
+    """Per window cell, the number of samples n with all factors[k][n, j_k] set (row-major over j).
+
+    A sum over samples of outer products, computed as a matrix product: the dims are split into two
+    groups of about equal window size, and each group is combined into one (samples, cells) matrix.
+    """
+    num = factors[0].shape[0]
+    if len(factors) == 1:
+        factors = [jnp.ones((num, 1), dtype=bool), *factors]  # matrix product here too: faster than a sum
+    sizes = [f.shape[1] for f in factors]
+    split = min(range(1, len(factors)), key=lambda m: abs(np.log(np.prod(sizes[:m]) / np.prod(sizes[m:]))))
+
+    def combine(group):
+        out = group[0]
+        for f in group[1:]:
+            out = (out[:, :, None] & f[:, None, :]).reshape(num, -1)
+        return out
+
+    # 0/1 entries and integer sums below 2^24 are exact in float32
+    dtype = jnp.float32 if num < 2 ** 24 else jnp.float64
+    left, right = (combine(g).astype(dtype) for g in (factors[:split], factors[split:]))
+    counts = jnp.dot(left.T, right, precision=jax.lax.Precision.HIGHEST)
+    return counts.reshape(-1).astype(jnp.int32)
 
 
 def _window_counts(lo, hi, a, b, origin, window_shape, grid_shape, wrap):
     """How many sample boxes fall in / overlap each window cell (row-major over window_shape).
 
     Each box overlaps the cells lo..hi and lies inside a single cell iff a == b (indices from _grid_index).
-    Overlaps are counted with a difference array: +-1 at the corners of each index box, then a prefix
-    sum along every dim.
+    Boxes and cells are boxes, so a box overlaps a cell iff it does so in every dim; the counts are sums
+    over samples of the per-dim indicators (see _contract).
     """
     window = tuple(int(w) for w in window_shape)
     grid = jnp.asarray(grid_shape, dtype=jnp.int32)
     lo, hi, a, b, origin = (jnp.asarray(v, dtype=jnp.int32) for v in (lo, hi, a, b, origin))
     num, dim = lo.shape
 
-    # inside: the box's single cell, if that cell is in the grid and in the window
-    pos = jnp.where(wrap, jnp.mod(a - origin, grid), a - origin)
-    in_grid = wrap | ((a >= 0) & (a < grid))
-    single = jnp.all((a == b) & in_grid & (pos >= 0) & (pos < jnp.asarray(window, dtype=jnp.int32)), axis=-1)
-    ids = jnp.sum(jnp.where(single[:, None], pos, 0) * _compute_linear_strides(window).astype(np.int32), axis=-1)
-    inside = jnp.zeros(int(np.prod(window)), jnp.int32).at[ids].add(single.astype(jnp.int32))
-
-    # overlap: window range per dim, split in two where a wrapped range passes the grid end
-    shape = tuple(w + 1 for w in window)  # one extra slot per dim for the closing corner
-    strides = _compute_linear_strides(shape)
-    flat, sign = 0, 1
+    inside, overlap = [], []
     for k in range(dim):
+        cells = origin[k] + jnp.arange(window[k], dtype=jnp.int32)  # grid cell of each window position
+        lo_k, hi_k, a_k = lo[:, k, None], hi[:, k, None], a[:, k, None]
+        single = (a == b)[:, k, None]
         if wrap[k]:
-            start = jnp.mod(lo[:, k] - origin[k], grid[k])
-            end = start + hi[:, k] - lo[:, k]
-            full = end - start + 1 >= grid[k]  # covers the whole circle
-            seg_lo = jnp.stack([jnp.where(full, 0, start), jnp.zeros_like(start)], axis=-1)
-            seg_hi = jnp.stack([jnp.where(full, window[k] - 1, jnp.minimum(end, grid[k] - 1)),
-                                jnp.where(full, -1, end - grid[k])], axis=-1)
+            # a range covers a cell iff it starts at most its length before it, or covers the whole circle
+            span = hi_k - lo_k
+            overlap.append((span + 1 >= grid[k]) | (jnp.mod(cells - lo_k, grid[k]) <= span))
+            inside.append(single & (jnp.mod(a_k - cells, grid[k]) == 0))
         else:
-            seg_lo = (jnp.maximum(lo[:, k], 0) - origin[k])[:, None]
-            seg_hi = (jnp.minimum(hi[:, k], grid[k] - 1) - origin[k])[:, None]
-        seg_lo, seg_hi = jnp.maximum(seg_lo, 0), jnp.minimum(seg_hi, window[k] - 1)
-        present = (seg_lo <= seg_hi)[..., None]
-        corners = jnp.where(present, jnp.stack([seg_lo, seg_hi + 1], axis=-1), 0)  # (num, segments, 2)
-        expand = (num,) + (1, 1) * k + corners.shape[1:] + (1, 1) * (dim - k - 1)
-        flat = flat + (corners * int(strides[k])).reshape(expand)
-        sign = sign * jnp.where(present, jnp.array([1, -1], dtype=jnp.int32), 0).reshape(expand)
-    diff = jnp.zeros(int(np.prod(shape)), jnp.int32).at[flat.reshape(-1)].add(sign.reshape(-1))
-    overlap = diff.reshape(shape)
-    for k in range(dim):
-        overlap = jnp.cumsum(overlap, axis=k, dtype=jnp.int32)
-    overlap = overlap[tuple(slice(0, w) for w in window)].reshape(-1)
-    return inside, overlap
+            in_grid = cells < grid[k]
+            overlap.append((lo_k <= cells) & (cells <= hi_k) & in_grid)
+            inside.append(single & (a_k == cells) & in_grid)
+    return _contract(inside), _contract(overlap)
 
 
 def _make_counts_kernel(step_fn, noise_sample_fn, num_samples, partition, lipschitz, max_slice,
@@ -137,22 +179,28 @@ def _make_counts_kernel(step_fn, noise_sample_fn, num_samples, partition, lipsch
     # window edges: of cells idx_lb + j for j = 0..max_slice per dim (inf past the window)
     steps = np.arange(max(max_slice) + 1)[:, None]
     past_window = steps > np.asarray(max_slice)
-    wrapped = np.flatnonzero(wrap)
+    # whole-grid search per wrapped dim, on its edges without padding
+    grid_sizes = [int(n) for n in np.asarray(partition.number_per_dim)]
+    searches = {k: _make_edge_search(np.asarray(edges[k])[:grid_sizes[k] + 1]) for k in np.flatnonzero(wrap)}
 
     def cell_index(x, idx_lb, window_edges):
-        """Cell index of each coordinate for side='right' and side='left' (see _grid_index).
+        """Cell index of each coordinate for side='right' and side='left'.
 
         Unwrapped dims are searched on the window edges only, so indices outside the window are clipped
         to one cell beyond it, which leaves all window counts unchanged. Wrapped dims are searched on the
-        whole grid, since a box there can leave the window and re-enter it from the other side.
+        whole grid (see _grid_index), since a box there can leave the window and re-enter it from the
+        other side.
         """
-        right = idx_lb + jnp.sum(window_edges <= x[:, None, :], axis=1) - 1
-        left = idx_lb + jnp.sum(window_edges < x[:, None, :], axis=1) - 1
-        if len(wrapped):
-            grid = (number_per_dim[wrapped], boundary_lb[wrapped], period[wrapped], True)
-            right = right.at[:, wrapped].set(_grid_index(edges[wrapped], x[:, wrapped], 'right', *grid))
-            left = left.at[:, wrapped].set(_grid_index(edges[wrapped], x[:, wrapped], 'left', *grid))
-        return right.astype(jnp.int32), left.astype(jnp.int32)
+        right, left = [], []
+        for k in range(len(wrap)):
+            if wrap[k]:
+                r, l = _grid_index(searches[k], x[:, k], grid_sizes[k], boundary_lb[k], period[k])
+            else:
+                r = idx_lb[k] + jnp.sum(window_edges[:, k] <= x[:, k, None], axis=1, dtype=jnp.int32) - 1
+                l = idx_lb[k] + jnp.sum(window_edges[:, k] < x[:, k, None], axis=1, dtype=jnp.int32) - 1
+            right.append(r)
+            left.append(l)
+        return jnp.stack(right, axis=-1).astype(jnp.int32), jnp.stack(left, axis=-1).astype(jnp.int32)
 
     def counts(state_min, state_max, action, idx_lb, rng):
         states, next_states = sample_next_states(step_fn, noise_sample_fn, num_samples,
@@ -166,6 +214,8 @@ def _make_counts_kernel(step_fn, noise_sample_fn, num_samples, partition, lipsch
         window_edges = jnp.where(past_window, jnp.inf, edge(idx_lb + steps))
         a, lo = cell_index(box_lb, idx_lb, window_edges)
         hi, b = cell_index(box_ub, idx_lb, window_edges)
+        # computed once: else XLA fuses the search into each window cell's indicator and repeats it there
+        a, lo, hi, b = jax.lax.optimization_barrier((a, lo, hi, b))
 
         # cells in the FRS
         cell_coords = idx_lb + offsets

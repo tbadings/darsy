@@ -426,7 +426,7 @@ def _guard(description, failures, fn, *fn_args, **fn_kwargs):
         return None
 
 
-def report(args, stamp, model, partition, V, policy, policy_inputs, iterations=100, num_traces=10,
+def report(args, stamp, model, partition, V, policy, policy_inputs, iterations=1000, num_traces=10,
            sim_horizon=1000):
     '''
     Validate the synthesised policy by simulation and write the figures for this run.
@@ -568,7 +568,7 @@ def draw_regions_of_interest(ax, model, dimensions=None):
             ))
 
 def report_scLTL(args, stamp, model, partition, V_lower, policy, dfa, labels,
-                  policy_inputs, *, iterations=100, num_traces=10, sim_horizon=1000):
+                  policy_inputs, *, iterations=1000, num_traces=10, sim_horizon=1000):
     """Validate product policy and plot the initial-label DFA slice.
 
     Heatmaps display values and controls for z = delta(z0,L(s)) at each s.
@@ -653,7 +653,7 @@ def set_safety_horizon(args, model):
 
 
 def report_safety(args, stamp, model, partition, V_lower, V_upper, policy,
-                  *, iterations=100, num_traces=10):
+                  *, iterations=1000, num_traces=10):
     """Save safety value heatmaps, MC trajectories and MC outcome plots."""
     import matplotlib.pyplot as plt
     from core.plotting.heatmap import heatmap
