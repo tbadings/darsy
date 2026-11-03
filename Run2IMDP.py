@@ -17,6 +17,7 @@ from core.pipeline import (
     extract_policy_inputs,
     finish,
     prepare_abstraction,
+    record_synthesis,
     report,
     report_scLTL,
     is_reach_avoid,
@@ -125,6 +126,7 @@ if __name__ == '__main__':
         with jax.default_device(args.rvi_device):
             V_lower, V_upper, policy = solve_safety(abstraction, mask, upper_mask, args.horizon,
                                                     two_layer=True, float_dtype=args.floatprecision)
+        record_synthesis(args, start, V_lower[args.horizon, s0], V_upper[args.horizon, s0])
         save_safety_results(args, s0, V_lower, V_upper, policy)
         report_safety(args, stamp, model, partition, V_lower, V_upper, policy)
 
@@ -143,6 +145,7 @@ if __name__ == '__main__':
 
         # With a horizon, report the values with all steps remaining
         at = s0 if args.horizon is None else (args.horizon, s0)
+        record_synthesis(args, start, V_lower[at], V_upper[at])
 
         logger.info(
             "Initial state s0=%d: lower=%.6f, upper=%.6f",
@@ -200,6 +203,7 @@ if __name__ == '__main__':
                 formula
             )
         )
+        record_synthesis(args, start, V_lower[s0, z0], V_upper[s0, z0])
 
         logger.info(
             "Initial product state (s,z)=(%d,%d): "
@@ -250,10 +254,5 @@ if __name__ == '__main__':
     # --------------------------------------------------
     # Finish
     # --------------------------------------------------
-
-    logger.info(
-        "<<< 2IMDP synthesis completed (took %.3f sec.) >>>",
-        time.time() - start
-    )
 
     finish(args)

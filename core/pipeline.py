@@ -9,6 +9,7 @@ in as a callback.
 """
 
 import copy
+import csv
 import datetime
 import logging
 import os
@@ -53,7 +54,53 @@ def configure_run(args):
     args.cwd = os.fspath(ROOT_DIR)
     args.root_dir = ROOT_DIR
 
+    # Key results of the run, exported to summary.csv by write_summary
+    args.summary = {}
+
     return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+
+def record_synthesis(args, start, lower, upper):
+    '''
+    Store the synthesis time and the bounds at the initial state in the run summary.
+
+    :param args: Argument namespace.
+    :param start: Time at which the synthesis started.
+    :param lower: Lower bound on the satisfaction probability in the initial state.
+    :param upper: Upper bound on the satisfaction probability in the initial state (None if unknown).
+    '''
+
+    args.summary['time_synthesis'] = time.time() - start
+    args.summary['lower_bound'] = float(lower)
+    args.summary['upper_bound'] = None if upper is None else float(upper)
+    logger.info('<<< Synthesis took %.3f sec. >>>\n', args.summary['time_synthesis'])
+
+
+def write_summary(args, model):
+    '''
+    Export the run summary (settings, runtimes, model size, and results) to summary.csv.
+
+    :param args: Argument namespace.
+    :param model: Benchmark model.
+    '''
+
+    rows = {
+        'model': args.model,
+        'specification': getattr(model, 'specification', None),
+        'solver': args.solver,
+        'coarse_factor': args.coarse_factor,
+        'horizon': 'none' if args.horizon is None else args.horizon,
+    }
+    for key in ('time_abstraction', 'time_synthesis', 'num_states', 'num_intervals',
+                'lower_bound', 'upper_bound', 'empirical_satprob'):
+        rows[key] = args.summary.get(key)
+
+    csv_path = args.output_dir / 'summary.csv'
+    with csv_path.open('w', newline='', encoding='utf-8') as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(['metric', 'value'])
+        writer.writerows(rows.items())
+    logger.info('Run summary saved to %s', csv_path)
 
 
 def _open_output_dir(args, stamp):
@@ -205,6 +252,8 @@ def prepare_abstraction(args, stamp, name, build):
         set_horizon(args, model)
         partition = ckpt['partition']
         abstraction = attach_region_data(ckpt[key], model, partition)
+        # Abstraction time and size from the run that built the checkpoint
+        args.summary.update(getattr(ckpt['args'], 'summary', {}))
 
         # Name the output folder after the checkpointed model rather than --model, which is
         # typically left unset when a checkpoint is replayed.
@@ -264,7 +313,9 @@ def prepare_abstraction(args, stamp, name, build):
     abstraction = build(args, model, partition, s_init)
 
     logger.info('Initial state x0=%s → state index %d\n', model.x0, s_init)
-    logger.info('<<< Generating %s abstraction took %.3f sec. >>>\n', name, time.time() - t)
+    args.summary['time_abstraction'] = time.time() - t
+    args.summary['num_states'] = abstraction.nr_states  # including the absorbing state
+    logger.info('<<< Generating %s abstraction took %.3f sec. >>>\n', name, args.summary['time_abstraction'])
 
     if args.save_checkpoint:
         save_checkpoint(args, key, model, partition, abstraction)
@@ -468,6 +519,8 @@ def report(args, stamp, model, partition, V, policy, policy_inputs, iterations=1
                  verbose=False, iterations=iterations, sim_horizon=sim_horizon)
     if sim is not None:
         logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
+        args.summary['empirical_satprob'] = float(sim.results['satprob'])
+    _guard('run summary', failures, write_summary, args, model)
 
     _guard('satisfaction probability heatmap', failures, heatmap,
            args, stamp, idx_show=model.plot_dimensions,
@@ -593,6 +646,8 @@ def report_scLTL(args, stamp, model, partition, V_lower, policy, dfa, labels,
         np.savez_compressed(args.output_dir / 'scLTL_monte_carlo.npz',
                             satisfied=sim.results['satisfied'],
                             satprob=sim.results['satprob'])
+        args.summary['empirical_satprob'] = float(sim.results['satprob'])
+    _guard('run summary', failures, write_summary, args, model)
 
     _guard('sc-LTL initial-state satisfaction heatmap', failures, heatmap,
            args, stamp, idx_show=model.plot_dimensions,
@@ -670,15 +725,6 @@ def report_safety(args, stamp, model, partition, V_lower, V_upper, policy,
     )
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Same heatmap routine, timestamp and output directory as other benchmarks.
-    for filename, values in (
-        ('safety_lower', V_lower[H]),
-        ('safety_upper', V_upper[H]),
-    ):
-        _guard(filename + ' heatmap', failures, heatmap,
-               args, stamp, idx_show=model.plot_dimensions,
-               partition=partition, results=values, filename=filename)
-
     # Sample trajectories under the time-dependent policy sigma[remaining_steps, state].
     noise = np.asarray(model.noise.sample(size=(iterations, H))) if H else None
     successes = np.zeros(iterations, dtype=bool)
@@ -715,6 +761,17 @@ def report_safety(args, stamp, model, partition, V_lower, V_upper, policy,
     )
     logger.info('Finite-horizon safety empirical probability (%d runs): %.6f',
                 iterations, probability)
+    args.summary['empirical_satprob'] = probability
+    _guard('run summary', failures, write_summary, args, model)
+
+    # Same heatmap routine, timestamp and output directory as other benchmarks.
+    for filename, values in (
+        ('safety_lower', V_lower[H]),
+        ('safety_upper', V_upper[H]),
+    ):
+        _guard(filename + ' heatmap', failures, heatmap,
+               args, stamp, idx_show=model.plot_dimensions,
+               partition=partition, results=values, filename=filename)
 
     def save_figure(fig, filename):
         for extension in ('png', 'pdf'):

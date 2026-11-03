@@ -29,6 +29,7 @@ from core.pipeline import (
     extract_policy_inputs,
     finish,
     prepare_abstraction,
+    record_synthesis,
     report,
     report_scLTL,
     is_reach_avoid,
@@ -74,19 +75,18 @@ def build_imdp(args, model, partition, s_init, coarse_factor=1, use_coarse=False
 
 
 def solve_imdp(args, imdp, s0):
-    """Reach-avoid synthesis: lower-bound values and policy, indexed by remaining steps with a horizon."""
+    """Reach-avoid synthesis: lower and upper values (upper is None with Storm) and policy,
+    indexed by remaining steps with a horizon."""
     if args.solver == 'jax':
         with jax.default_device(args.rvi_device):
-            lower, upper, policy = solve_reach_avoid(
+            return solve_reach_avoid(
                 imdp, initial_state=s0, horizon=args.horizon, policy_iteration=args.policy_iteration,
                 satprob=args.satprob, float_dtype=args.floatprecision,
             )
-        at = s0 if args.horizon is None else (args.horizon, s0)  # with all steps remaining
-        logger.info('Initial state s0=%d: upper bound=%.6f', s0, upper[at])
-        return lower, policy
     if args.horizon is not None:
         raise ValueError('Finite-horizon reach-avoid currently requires --solver jax')
-    return RVI_STORM(args=args, imdp=imdp)
+    lower, policy = RVI_STORM(args=args, imdp=imdp)
+    return lower, None, policy
 
 
 def solve_imdp_scLTL(args, imdp, s0, formula):
@@ -149,12 +149,16 @@ def main():
         with jax.default_device(args.rvi_device):
             V_lower, V_upper, policy = solve_safety(imdp, mask, upper_mask, args.horizon,
                                                     float_dtype=args.floatprecision)
+        record_synthesis(args, t, V_lower[args.horizon, s0], V_upper[args.horizon, s0])
         save_safety_results(args, s0, V_lower, V_upper, policy)
         report_safety(args, stamp, model, partition, V_lower, V_upper, policy)
     elif reach_avoid:
-        V, policy = solve_imdp(args, imdp, s0)
+        V, V_upper, policy = solve_imdp(args, imdp, s0)
         at = s0 if args.horizon is None else (args.horizon, s0)  # with all steps remaining
+        record_synthesis(args, t, V[at], None if V_upper is None else V_upper[at])
         logger.info('Initial state s0=%d: value=%.6f', s0, V[at])
+        if V_upper is not None:
+            logger.info('Initial state s0=%d: upper bound=%.6f', s0, V_upper[at])
         policy_inputs = extract_policy_inputs(
             args, partition, policy, imdp.nr_states, time_indexed=args.horizon is not None
         )
@@ -163,6 +167,7 @@ def main():
         V_lower, V_upper, policy, dfa, z0, labels = solve_imdp_scLTL(
             args, imdp, s0, formula
         )
+        record_synthesis(args, t, V_lower[s0, z0], V_upper[s0, z0])
         logger.info('Initial product state (%d,%d): lower=%.6f, upper=%.6f',
                     s0, z0, V_lower[s0, z0], V_upper[s0, z0])
         np.savez_compressed(
@@ -182,7 +187,6 @@ def main():
             labels=labels, policy_inputs=policy_inputs,
         )
 
-    logger.info('<<< IMDP synthesis completed (took %.3f sec.) >>>', time.time() - t)
     finish(args)
 
 

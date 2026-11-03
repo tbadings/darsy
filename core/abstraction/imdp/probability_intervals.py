@@ -294,6 +294,7 @@ def compute_probability_intervals(args, model, partition, actions, coarse_partit
     if use_coarse:
         intervals_per_pair += int(np.prod(actions.max_slice_coarse))
     num_intervals = num_cells * num_actions * intervals_per_pair
+    args.summary['num_intervals'] = num_intervals
     beta_per_interval = args.pac_beta / num_intervals
     logger.info(f'Union bound over {num_intervals} intervals: per interval beta = {beta_per_interval:.3e}')
     cp_lb, cp_ub = compute_cp_table(args.num_samples, beta_per_interval, args.floatprecision)
