@@ -65,6 +65,7 @@ The current benchmark registry includes:
 - `Pendulum`: inverted pendulum benchmark.
 - `MountainCar`: mountain car benchmark.
 - `DoubleIntegrator`: double integrator benchmark.
+- `PackageDelivery`: ARCH-COMP22 package delivery benchmark (2D linear, scLTL `F (p1 & ((!p2) U p3))`); run with `--noise_distr gaussian` to match the benchmark's noise.
 - `Test1D`: simple 1D test model.
 
 Included but untested benchmarks are:
@@ -112,7 +113,7 @@ Steps 4 and 5 are best effort: a failure while simulating or plotting is logged 
 To skip abstraction generation and rerun the solver and plotting pipeline from a saved checkpoint:
 
 ```bash
-python RunIMDP.py --model MountainCar --load_checkpoint output/<timestamp>_MountainCar/checkpoint.pkl
+python RunIMDP.py --model MountainCar --load_checkpoint output/<timestamp>_IMDP_MountainCar/checkpoint.pkl
 ```
 
 When `--load_checkpoint` is provided, the saved model, partition, and abstraction are loaded directly from the specified pickle file. Checkpoints are specific to the entrypoint that wrote them.
@@ -170,7 +171,7 @@ If you run into memory limits, reduce `--batch_size` first. On larger benchmarks
 Each run creates an output directory named like:
 
 ```text
-output/2026-06-02_10-49-08_MountainCar/
+output/2026-06-02_10-49-08_IMDP_MountainCar/
 ```
 
 Depending on the benchmark and selected options, that directory may contain:
@@ -179,8 +180,8 @@ Depending on the benchmark and selected options, that directory may contain:
 - `run_<timestamp>.log`: full log output.
 - `satprob_<timestamp>.{pdf,png}`: heatmap of the satisfaction probability per state.
 - `policy_<timestamp>.{pdf,png}`: heatmap of the first control input selected per state.
-- `traces_<timestamp>.{pdf,png}`: simulated trajectories over the model's `plot_dimensions` (1D models are drawn against the time step).
-- `traces_3d_<timestamp>_view<i>.{pdf,png}`: 3D trajectories, for models defining `plot_dimensions_3d` (such as `Drone6D`).
+- `trajectories_<timestamp>.{pdf,png}`: simulated trajectories over the model's `plot_dimensions` (1D models are drawn against the time step).
+- `trajectories_3d_<timestamp>_view<i>.{pdf,png}`: 3D trajectories, for models defining `plot_dimensions_3d` (such as `Drone6D`).
 - a trajectory GIF, for models defining `gif_dimensions` (`Pendulum`, `MountainCar`, `CartPole`).
 
 # Repository structure

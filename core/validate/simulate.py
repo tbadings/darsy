@@ -367,11 +367,6 @@ class MonteCarloSim_scLTL(MonteCarloSim):
             np.mean(self.results["satisfied"])
         )
 
-        logger.info(
-            "Empirical sc-LTL satisfaction probability: %.6f",
-            self.results["satprob"]
-        )
-
     def _runIteration(self, x0, m):
         """
         Run one Monte Carlo simulation.

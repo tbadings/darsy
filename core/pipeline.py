@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 # Repository root, i.e. the directory holding the entrypoint scripts (this module lives in core/).
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
+# Arguments that determine the abstraction (the batch sizes too, as the random keys are drawn per batch)
+ABSTRACTION_SETTINGS = ('coarse_factor', 'num_samples', 'frs_num_samples', 'alpha', 'pac_beta', 'seed',
+                        'batch_size', 'frs_batch_size')
+
 
 def configure_run(args):
     '''
@@ -86,13 +90,16 @@ def write_summary(args, model):
 
     rows = {
         'model': args.model,
+        'abstraction': args.summary.get('abstraction'),
         'specification': getattr(model, 'specification', None),
+        'noise': model.noise['type'],  # the model's own noise, which need not follow --noise_distr
         'solver': args.solver,
-        'coarse_factor': args.coarse_factor,
         'horizon': 'none' if args.horizon is None else args.horizon,
+        'checkpoint': args.load_checkpoint,
     }
-    for key in ('time_abstraction', 'time_synthesis', 'num_states', 'num_intervals',
-                'lower_bound', 'upper_bound', 'empirical_satprob'):
+    # The abstraction settings are those of the run that built the abstraction (see prepare_abstraction)
+    for key in ABSTRACTION_SETTINGS + ('time_abstraction', 'time_synthesis', 'num_states', 'num_intervals',
+                                        'lower_bound', 'upper_bound', 'empirical_satprob'):
         rows[key] = args.summary.get(key)
 
     csv_path = args.output_dir / 'summary.csv'
@@ -101,6 +108,12 @@ def write_summary(args, model):
         writer.writerow(['metric', 'value'])
         writer.writerows(rows.items())
     logger.info('Run summary saved to %s', csv_path)
+
+
+def _abstraction_settings(args):
+    '''Values of ABSTRACTION_SETTINGS in an argument namespace (None if absent, e.g. in an older checkpoint).'''
+
+    return {key: getattr(args, key, None) for key in ABSTRACTION_SETTINGS}
 
 
 def _open_output_dir(args, stamp):
@@ -112,7 +125,7 @@ def _open_output_dir(args, stamp):
     :return: Path of the created directory.
     '''
 
-    run_output_dir = args.root_dir / args.output_root / f"{stamp}_{args.model}"
+    run_output_dir = args.root_dir / args.output_root / f"{stamp}_{args.summary['abstraction']}_{args.model}"
     run_output_dir.mkdir(parents=True, exist_ok=True)
     args.output_dir = run_output_dir
     add_file_handler(run_output_dir, stamp)
@@ -234,6 +247,7 @@ def prepare_abstraction(args, stamp, name, build):
     '''
 
     key = name.lower()
+    args.summary['abstraction'] = name
 
     if args.load_checkpoint:
         # --- Load abstraction from checkpoint ---
@@ -252,7 +266,8 @@ def prepare_abstraction(args, stamp, name, build):
         set_horizon(args, model)
         partition = ckpt['partition']
         abstraction = attach_region_data(ckpt[key], model, partition)
-        # Abstraction time and size from the run that built the checkpoint
+        # Abstraction settings, time and size from the run that built the checkpoint
+        args.summary.update(_abstraction_settings(ckpt['args']))
         args.summary.update(getattr(ckpt['args'], 'summary', {}))
 
         # Name the output folder after the checkpointed model rather than --model, which is
@@ -313,6 +328,7 @@ def prepare_abstraction(args, stamp, name, build):
     abstraction = build(args, model, partition, s_init)
 
     logger.info('Initial state x0=%s → state index %d\n', model.x0, s_init)
+    args.summary.update(_abstraction_settings(args))
     args.summary['time_abstraction'] = time.time() - t
     args.summary['num_states'] = abstraction.nr_states  # including the absorbing state
     logger.info('<<< Generating %s abstraction took %.3f sec. >>>\n', name, args.summary['time_abstraction'])
@@ -502,7 +518,7 @@ def report(args, stamp, model, partition, V, policy, policy_inputs, iterations=1
     '''
 
     from core.plotting.heatmap import heatmap
-    from core.plotting.traces import plot_traces, plot_traces_3d
+    from core.plotting.trajectories import plot_trajectories, plot_trajectories_3d
     from core.validate.simulate import MonteCarloSim
 
     failures = []
@@ -537,17 +553,17 @@ def report(args, stamp, model, partition, V, policy, policy_inputs, iterations=1
 
     traces = sim.results['traces']
 
-    _guard('trace plot', failures, plot_traces,
+    _guard('trajectory plot', failures, plot_trajectories,
            args, stamp, model.plot_dimensions, partition, model, traces,
-           line=False, num_traces=num_traces, add_unsafe_box=False)
+           num_trajectories=num_traces, add_unsafe_box=False)
 
     # Models that are natural to show in 3D (e.g. the 6D drone) declare the three dimensions to use.
     dims_3d = getattr(model, 'plot_dimensions_3d', None)
     if dims_3d is not None:
-        logger.info('Plotting traces in 3D (dimensions %s)...', list(dims_3d))
-        _guard('3D trace plot', failures, plot_traces_3d,
+        logger.info('Plotting trajectories in 3D (dimensions %s)...', list(dims_3d))
+        _guard('3D trajectory plot', failures, plot_trajectories_3d,
                args, stamp, dims_3d, partition, model, traces,
-               num_traces=num_traces, filename='traces_3d')
+               num_trajectories=num_traces, filename='trajectories_3d')
 
     # Models that can animate a trajectory declare which state dimensions the animation needs.
     gif_dims = list(getattr(model, 'gif_dimensions', []) or [])
@@ -628,7 +644,7 @@ def report_scLTL(args, stamp, model, partition, V_lower, policy, dfa, labels,
     They are not plots of the full product-state policy.
     """
     from core.plotting.heatmap import heatmap
-    from core.plotting.traces import plot_traces, plot_traces_3d
+    from core.plotting.trajectories import plot_trajectories, plot_trajectories_3d
     from core.validate.simulate import MonteCarloSim_scLTL
 
     failures = []
@@ -659,15 +675,15 @@ def report_scLTL(args, stamp, model, partition, V_lower, policy, dfa, labels,
 
     if sim is not None:
         traces = sim.results['traces']
-        _guard('sc-LTL trace plot', failures, plot_traces,
+        _guard('sc-LTL trajectory plot', failures, plot_trajectories,
                args, stamp, model.plot_dimensions, partition, model, traces,
-               line=False, num_traces=num_traces, add_unsafe_box=False,
+               num_trajectories=num_traces, add_unsafe_box=False,
                labeled_regions=True)
         dims_3d = getattr(model, 'plot_dimensions_3d', None)
         if dims_3d is not None:
-            _guard('sc-LTL 3D trace plot', failures, plot_traces_3d,
+            _guard('sc-LTL 3D trajectory plot', failures, plot_trajectories_3d,
                    args, stamp, dims_3d, partition, model, traces,
-                   num_traces=num_traces, filename='scLTL_traces_3d',
+                   num_trajectories=num_traces, filename='scLTL_trajectories_3d',
                    labeled_regions=True)
     return failures
 
@@ -712,6 +728,7 @@ def report_safety(args, stamp, model, partition, V_lower, V_upper, policy,
     """Save safety value heatmaps, MC trajectories and MC outcome plots."""
     import matplotlib.pyplot as plt
     from core.plotting.heatmap import heatmap
+    from core.plotting.utils import PNG_DPI
 
     failures = []
     H = set_safety_horizon(args, model)
@@ -776,7 +793,7 @@ def report_safety(args, stamp, model, partition, V_lower, V_upper, policy,
     def save_figure(fig, filename):
         for extension in ('png', 'pdf'):
             fig.savefig(args.output_dir / f'{filename}_{stamp}.{extension}',
-                        bbox_inches='tight')
+                        bbox_inches='tight', dpi=PNG_DPI)
         plt.close(fig)
 
     fig, ax = plt.subplots()
@@ -809,7 +826,7 @@ def report_safety(args, stamp, model, partition, V_lower, V_upper, policy,
                 ax.add_patch(Rectangle(xy, *wh, fill=False,
                                        edgecolor='green', linewidth=1.5))
         ax.set_title('Safety Monte Carlo trajectories (blue: safe, red: unsafe)')
-        save_figure(fig, 'safety_mc_traces')
+        save_figure(fig, 'safety_mc_trajectories')
     if failures:
         logger.error('Safety plotting failures: %s', ', '.join(failures))
     return probability

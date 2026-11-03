@@ -4,6 +4,8 @@ import seaborn as sns
 import matplotlib as mpl
 from pathlib import Path
 
+from core.plotting.utils import PNG_DPI
+
 
 def heatmap(args, stamp, idx_show, slice_values=None, partition=None,
             results=None, filename='heatmap', overlay=None, **kwargs):
@@ -76,6 +78,6 @@ def heatmap(args, stamp, idx_show, slice_values=None, partition=None,
         output_dir = Path(getattr(args, 'output_dir', 'output'))
         output_dir.mkdir(parents=True, exist_ok=True)
         fig.savefig(output_dir / f'{filename}_{stamp}.pdf', format='pdf', bbox_inches='tight')
-        fig.savefig(output_dir / f'{filename}_{stamp}.png', format='png', bbox_inches='tight')
+        fig.savefig(output_dir / f'{filename}_{stamp}.png', format='png', bbox_inches='tight', dpi=PNG_DPI)
     finally:
         plt.close(fig)

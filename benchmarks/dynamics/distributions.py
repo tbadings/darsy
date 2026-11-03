@@ -325,7 +325,7 @@ class TruncatedGaussianBallDistr(dict):
         return samples
 
     def sample(self, size=None, rng=None):
-        rng = np.random.default_rng() if rng is None else rng
+        rng = np.random if rng is None else rng
         shape = () if size is None else ((size,) if isinstance(size, int) else tuple(size))
         out = rng.normal(0.0, self.sigma, size=shape + (self.dimension,))
         bad = np.sum(out**2, axis=-1) > self.radius**2

@@ -1,13 +1,13 @@
-from benchmarks.models import DoubleIntegratorDynamics
+from benchmarks.models import PackageDeliveryDynamics
 import jax.numpy as jnp
 import numpy as np
 
 
-class DoubleIntegrator(DoubleIntegratorDynamics):
-    """Double-integrator benchmark with position and velocity states and scalar acceleration input."""
+class PackageDelivery(PackageDeliveryDynamics):
+    """ARCH-COMP22 package delivery benchmark: pick up a parcel at p1 and deliver it at p3, losing it at p2."""
 
     def __init__(self, args):
-        super().__init__(args)
+        PackageDeliveryDynamics.__init__(self, args)
 
         self.plot_dimensions = [0, 1]
 
@@ -23,9 +23,10 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
         # Control inputs
         # --------------------------------------------------
 
-        self.uMin = [-5]
-        self.uMax = [5]
-        self.num_actions = [21]
+        # The benchmark leaves the input unbounded; we use [-1, 1]^2, as IMPaCT did in ARCH-COMP25.
+        self.uMin = [-1, -1]
+        self.uMax = [1, 1]
+        self.num_actions = [3, 3]
 
         # --------------------------------------------------
         # State-space partition
@@ -33,16 +34,16 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
 
         # State-space bounds used for abstraction.
         self.partition["boundary"] = np.array([
-            [-21, -10.5],
-            [21, 10.5]
+            [-6, -6],
+            [6, 6]
         ])
 
         self.partition["boundary_jnp"] = jnp.array(
             self.partition["boundary"]
         )
 
-        # Nominal partition resolution along each state dimension.
-        self.partition["number_per_dim"] = np.array([51, 51])
+        # Nominal partition resolution along each state dimension (cell width 0.5, as in ARCH-COMP25).
+        self.partition["number_per_dim"] = np.array([400, 400])
 
         # --------------------------------------------------
         # Regions of interest
@@ -50,34 +51,34 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
 
         # Each region is a union of boxes with shape (N, 2, state_dim).
         self.regions = {
-            "r_goal": np.array([
-                [[-4, -2], [4, 2]]
+            # Pick-up location
+            "r_p1": np.array([
+                [[5, -1], [6, 1]]
             ], dtype=float),
 
-            "r_unsafe": np.empty((0, 2, 2), dtype=float),
-
-            "r_wet": np.array([
-                [[5, -5], [10, 0]]
+            # Region where a carried parcel is lost
+            "r_p2": np.array([
+                [[0, -5], [1, 1]]
             ], dtype=float),
 
-            "r_carpet": np.array([
-                [[-10, 2], [-5, 5]]
+            # Delivery location
+            "r_p3": np.array([
+                [[-4, -4], [-2, -3]]
             ], dtype=float)
         }
 
-        # Expose goal/unsafe geometry for the reach-avoid solver interface.
-        self.goal = self.regions["r_goal"]
-        self.critical = self.regions["r_unsafe"]
+        # No goal or unsafe sets: the task is specified only through the labels below.
+        self.goal = np.empty((0, 2, 2), dtype=float)
+        self.critical = np.empty((0, 2, 2), dtype=float)
 
         # --------------------------------------------------
         # Atomic propositions
         # --------------------------------------------------
 
         self.atomic_propositions = [
-            "goal",
-            "unsafe",
-            "wet",
-            "carpet"
+            "p1",
+            "p2",
+            "p3"
         ]
 
         # --------------------------------------------------
@@ -86,26 +87,24 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
 
         # Assign atomic propositions to each named region of interest.
         self.labels = {
-            "r_goal": {"goal"},
-            "r_unsafe": {"unsafe"},
-            "r_wet": {"wet"},
-            "r_carpet": {"carpet"}
+            "r_p1": {"p1"},
+            "r_p2": {"p2"},
+            "r_p3": {"p3"}
         }
 
         # --------------------------------------------------
-        # Temporal-logic specification (reach-avoid or general scLTL)
+        # sc-LTL specification
         # --------------------------------------------------
 
-        self.specification = (
-            "((!unsafe) & (!wet | ((!goal) U carpet))) "
-            "U (goal & (!unsafe))"
-        )
+        # Pick up the parcel at p1, then deliver it at p3 without passing through p2 on the way.
+        self.specification = "F (p1 & ((!p2) U p3))"
 
         # --------------------------------------------------
         # Initial condition
         # --------------------------------------------------
 
-        self.x0 = np.array([0, -8])
+        # As used by SySCoRe in ARCH-COMP25.
+        self.x0 = np.array([-5, -5])
 
     def labeling_function(self, r):
         """Return the atomic propositions assigned to a named region."""

@@ -1,6 +1,9 @@
 import numpy as np
 from matplotlib.patches import Rectangle
 
+# Resolution of all saved PNG figures (PDFs are vector graphics and unaffected)
+PNG_DPI = 600
+
 def plot_boxes(ax, model, plot_dimensions=[0, 1], labels=False, latex=False, size=12):
     ''' Plot the target, initial, and unsafe state sets '''
 

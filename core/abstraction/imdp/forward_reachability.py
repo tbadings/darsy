@@ -12,11 +12,16 @@ from core.utils import create_batches, wrap_diff
 logger = logging.getLogger(__name__)
 
 
-def sample_next_states(step_fn, noise_sample_fn, num_samples, state_min, state_max, action, rng):
-    """Sample states uniformly"""
-    rng_state, rng_noise = jax.random.split(rng)
-    states = jax.random.uniform(rng_state, (num_samples, state_min.shape[0]),
-                                minval=state_min, maxval=state_max)
+def sample_next_states(step_fn, noise_sample_fn, num_samples, state_min, state_max, action, rng,
+                       fix_center=True):
+    """Sample states uniformly or from center (if fix_center is true) and propagate under noisy dynamics."""
+    if fix_center:
+        rng_noise = rng
+        states = jnp.broadcast_to((state_min + state_max) / 2, (num_samples, state_min.shape[0]))
+    else:
+        rng_state, rng_noise = jax.random.split(rng)
+        states = jax.random.uniform(rng_state, (num_samples, state_min.shape[0]),
+                                    minval=state_min, maxval=state_max)
     noise = noise_sample_fn(rng_noise, shape=(num_samples,))
     next_states = jax.vmap(step_fn, in_axes=(0, None, 0))(states, action, noise)
     return states, next_states

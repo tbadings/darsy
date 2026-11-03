@@ -89,7 +89,7 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
         
 
 class DoubleIntegrator_scLTL(DoubleIntegratorDynamics):
-    """Double-integrator benchmark with a temporal-logic specification."""
+    """Double-integrator benchmark with a sequential scLTL task: origin, then -10, then +10 (at rest)."""
 
     def __init__(self, args):
         super().__init__(args)
@@ -134,26 +134,33 @@ class DoubleIntegrator_scLTL(DoubleIntegratorDynamics):
         # --------------------------------------------------
 
         # Each region is a union of boxes with shape (N, 2, state_dim).
+        # Targets are (nearly) stationary: position within 4 of the target, |velocity| <= 2.
         self.regions = {
-            "r_goal": np.array([
+            "r_origin": np.array([
                 [[-4, -2], [4, 2]]
             ], dtype=float),
 
-            "r_unsafe": np.empty((0, 2, 2), dtype=float),
+            "r_left": np.array([
+                [[-14, -2], [-6, 2]]
+            ], dtype=float),
 
+            "r_right": np.array([
+                [[6, -2], [14, 2]]
+            ], dtype=float)
         }
 
-        # Expose goal/unsafe geometry for the reach-avoid solver interface.
-        self.goal = self.regions["r_goal"]
-        self.critical = self.regions["r_unsafe"]
+        # No goal or unsafe sets: the task is specified only through the labels below.
+        self.goal = np.empty((0, 2, 2), dtype=float)
+        self.critical = np.empty((0, 2, 2), dtype=float)
 
         # --------------------------------------------------
         # Atomic propositions
         # --------------------------------------------------
 
         self.atomic_propositions = [
-            "goal",
-            "unsafe",
+            "origin",
+            "left",
+            "right"
         ]
 
         # --------------------------------------------------
@@ -162,16 +169,17 @@ class DoubleIntegrator_scLTL(DoubleIntegratorDynamics):
 
         # Assign atomic propositions to each named region of interest.
         self.labels = {
-            "r_goal": {"goal"},
-            "r_unsafe": {"unsafe"},
+            "r_origin": {"origin"},
+            "r_left": {"left"},
+            "r_right": {"right"}
         }
 
         # --------------------------------------------------
-        # Temporal-logic specification (reach-avoid or general scLTL)
+        # Temporal-logic specification (sequential task)
         # --------------------------------------------------
 
-        # Avoid unsafe states until reaching the goal; success ends the task.
-        self.specification = "(!unsafe) U (goal)"
+        # Reach the origin, then come to rest around position -10, then around position +10.
+        self.specification = "F (origin & F (left & F right))"
 
         # --------------------------------------------------
         # Initial condition

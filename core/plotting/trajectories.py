@@ -8,13 +8,15 @@ import numpy as np
 from matplotlib.patches import Rectangle
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from pathlib import Path
-from scipy.interpolate import CubicSpline
 
 from core.utils import cm2inch
-from core.plotting.utils import plot_boxes, plot_grid, set_plot_lims, set_plot_ticks
+from core.plotting.utils import PNG_DPI, plot_boxes, plot_grid, set_plot_lims, set_plot_ticks
 
 mpl.rcParams['pdf.fonttype'] = 42
 mpl.rcParams['ps.fonttype'] = 42
+
+# Whitespace (in inches) kept around the tight bounding box of saved trajectory plots
+TIGHT_PAD = 0.01
 
 
 def _format_state_label_math(var_name):
@@ -109,8 +111,8 @@ def _plot_labeled_regions_3d(ax, model, dimensions, alpha=0.24):
         ax.legend(handles=handles, loc="best", fontsize=8)
 
 
-def plot_traces_3d(args, stamp, idx_show, partition, model, traces, num_traces=10, filename="traces_3d", show_ticks=None, camera_angles=None, labeled_regions=False):
-    """Plot 3D traces.
+def plot_trajectories_3d(args, stamp, idx_show, partition, model, trajectories, num_trajectories=10, filename="trajectories_3d", show_ticks=None, camera_angles=None, labeled_regions=False):
+    """Plot 3D trajectories.
 
     New params:
     - grid_linewidth: float or None -> line width for grid (very thin if None defaults)
@@ -144,9 +146,10 @@ def plot_traces_3d(args, stamp, idx_show, partition, model, traces, num_traces=1
             high = np.array(set_[1])[[i1, i2, i3]]
             _plot_cuboid(ax, low, high, facecolor='red', edgecolor='none', alpha=0.44)
 
-    for trace in traces.values():
-        state_trace = np.array(trace['x'])[:, [i1, i2, i3]]
-        ax.scatter(state_trace[:, 0], state_trace[:, 1], state_trace[:, 2], s=1, color='black', edgecolors='none', alpha=0.7)
+    for trajectory in trajectories.values():
+        states = np.array(trajectory['x'])[:, [i1, i2, i3]]
+        ax.plot(states[:, 0], states[:, 1], states[:, 2], '-', color='black', linewidth=0.3, alpha=0.6)
+        ax.scatter(states[:, 0], states[:, 1], states[:, 2], s=1, color='black', edgecolors='none', alpha=0.7)
 
     ax.set_xlim(state_lb[0], state_ub[0])
     ax.set_ylim(state_lb[1], state_ub[1])
@@ -171,7 +174,7 @@ def plot_traces_3d(args, stamp, idx_show, partition, model, traces, num_traces=1
     ax.xaxis.set_major_formatter(formatter)
     ax.yaxis.set_major_formatter(formatter)
     ax.zaxis.set_major_formatter(formatter)
-    ax.tick_params(axis='both', which='major', labelsize=0, direction='in', length=3)
+    ax.tick_params(axis='both', which='major', labelsize=0, direction='in', length=3, pad=0)
 
 # Use a very thin default grid line width unless overridden
     ax.grid(True, linestyle='--', linewidth=1, opacity=0.5)
@@ -192,8 +195,8 @@ def plot_traces_3d(args, stamp, idx_show, partition, model, traces, num_traces=1
 
         pdf_name = output_dir / f'{filename}_{stamp}_view{vi}_{stamp}.pdf'
         png_name = output_dir / f'{filename}_{stamp}_view{vi}_{stamp}.png'
-        plt.savefig(pdf_name, format='pdf', bbox_inches='tight')
-        plt.savefig(png_name, format='png', bbox_inches='tight')
+        plt.savefig(pdf_name, format='pdf', bbox_inches='tight', pad_inches=TIGHT_PAD)
+        plt.savefig(png_name, format='png', bbox_inches='tight', pad_inches=TIGHT_PAD, dpi=max(PNG_DPI, fig.dpi))
 
     plt.close(fig)
 
@@ -202,12 +205,12 @@ def _save_figure(args, stamp, filename):
     """Write the current figure to the run output directory, as both PDF and PNG."""
     output_dir = Path(getattr(args, 'output_dir', 'output'))
     output_dir.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_dir / f'{filename}_{stamp}.pdf', format='pdf', bbox_inches='tight')
-    plt.savefig(output_dir / f'{filename}_{stamp}.png', format='png', bbox_inches='tight')
+    plt.savefig(output_dir / f'{filename}_{stamp}.pdf', format='pdf', bbox_inches='tight', pad_inches=TIGHT_PAD)
+    plt.savefig(output_dir / f'{filename}_{stamp}.png', format='png', bbox_inches='tight', pad_inches=TIGHT_PAD, dpi=PNG_DPI)
 
 
-def _plot_traces_1d(args, stamp, i1, partition, model, traces, num_traces=10, filename="traces", show_ticks=None):
-    """Plot traces of a 1D model as the state against the time step (there is no second state axis)."""
+def _plot_trajectories_1d(args, stamp, i1, partition, model, trajectories, num_trajectories=10, filename="trajectories", show_ticks=None):
+    """Plot trajectories of a 1D model as the state against the time step (there is no second state axis)."""
     fig, ax = plt.subplots(figsize=cm2inch(6.1, 5), dpi=300)
 
     font = {'size': 10}
@@ -223,25 +226,25 @@ def _plot_traces_1d(args, stamp, i1, partition, model, traces, num_traces=10, fi
 
     ax.set_ylim(float(partition.boundary_lb[i1]), float(partition.boundary_ub[i1]))
 
-# Add traces
+# Add trajectories
     max_k = 1
     i = 0
-    for trace in traces.values():
-        state_trace = np.array(trace['x'])[:, i1]
+    for trajectory in trajectories.values():
+        states = np.array(trajectory['x'])[:, i1]
 
-# Only show trace if there are at least two points
-        if len(state_trace) < 2:
+# Only show trajectory if there are at least two points
+        if len(states) < 2:
             continue
         else:
             i += 1
 
-# Stop at desired number of traces
-        if i > num_traces:
+# Stop at desired number of trajectories
+        if i > num_trajectories:
             break
 
-        steps = np.arange(len(state_trace))
+        steps = np.arange(len(states))
         max_k = max(max_k, int(steps[-1]))
-        ax.plot(steps, state_trace, '-o', color="blue", markersize=1, linewidth=1, alpha=0.6)
+        ax.plot(steps, states, '-o', color="blue", markersize=1, linewidth=1, alpha=0.6)
 
     ax.set_xlim(0, max_k)
 
@@ -267,11 +270,11 @@ def _plot_traces_1d(args, stamp, i1, partition, model, traces, num_traces=10, fi
     plt.close(fig)
 
 
-def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_traces=10, add_unsafe_box=True, filename="traces", show_ticks=None, labeled_regions=False):
+def plot_trajectories(args, stamp, idx_show, partition, model, trajectories, line=True, num_trajectories=10, add_unsafe_box=True, filename="trajectories", show_ticks=None, labeled_regions=False):
     idx = np.atleast_1d(np.asarray(idx_show, dtype=int))
     if idx.size == 1:
-        return _plot_traces_1d(args, stamp, int(idx[0]), partition, model, traces,
-                               num_traces=num_traces, filename=filename, show_ticks=show_ticks)
+        return _plot_trajectories_1d(args, stamp, int(idx[0]), partition, model, trajectories,
+                               num_trajectories=num_trajectories, filename=filename, show_ticks=show_ticks)
     if idx.size != 2:
         raise ValueError(f'Expected one or two plot dimensions to show, got {idx.size}: {idx_show}.')
     i1, i2 = int(idx[0]), int(idx[1])
@@ -349,38 +352,27 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
             width, height = (high - low)
             ax.add_patch(Rectangle(low, width, height, facecolor='red', alpha=0.3, edgecolor='red'))
 
-# Add traces
+# Add trajectories
     i = 0
-    for trace in traces.values():
-        state_trace = np.array(trace['x'])[:, [i1, i2]]
+    for trajectory in trajectories.values():
+        states = np.array(trajectory['x'])[:, [i1, i2]]
 
-# Only show trace if there are at least two points
-        if len(state_trace) < 2:
+# Only show trajectory if there are at least two points
+        if len(states) < 2:
             continue
         else:
             i += 1
 
-# Stop at desired number of traces
-        if i > num_traces:
+# Stop at desired number of trajectories
+        if i > num_trajectories:
             break
 
-# Plot precise points
-        plt.plot(*state_trace.T, 'o', markersize=1, color="black");
-
+# Connect consecutive states with a thin line
         if line:
-# Linear length along the line:
-            distance = np.cumsum(np.sqrt(np.sum(np.diff(state_trace, axis=0) ** 2,
-                                                axis=1)))
-            distance = np.insert(distance, 0, 0) / distance[-1]
+            plt.plot(*states.T, '-', color="black", linewidth=0.3, alpha=0.6)
 
-# Interpolation for different methods:
-            alpha = np.linspace(0, 1, 75)
-
-            cs = CubicSpline(distance, state_trace, bc_type='natural')
-            interpolated_points = cs(alpha)
-
-# Plot trace
-            plt.plot(*interpolated_points.T, '-', color="blue", linewidth=1);
+# Plot precise points
+        plt.plot(*states.T, 'o', markersize=1, color="black");
 
 # plt.gca().set_aspect('equal')
 
