@@ -35,7 +35,7 @@ class Temperature4D(Temperature4DDynamics):
         self.safe_set = np.array([boundary], dtype=float)
 
         # Nominal partition resolution along each state dimension.
-        self.partition['number_per_dim'] = np.full(4, 12, dtype=int)
+        self.partition['number_per_dim'] = np.array([12,12,12,12])
                 
         # --------------------------------------------------
         # Regions of interest
@@ -81,7 +81,7 @@ class Temperature4D(Temperature4DDynamics):
         # --------------------------------------------------
 
         self.specification = "G(safe)"
-        self.horizon = 20
+        self.horizon = 15
 
         # --------------------------------------------------
         # Initial condition
