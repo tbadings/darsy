@@ -540,7 +540,7 @@ class Temperature4DDynamics:
             [0.0, 0.0625, 0.8385, 0.0625],
             [0.0, 0.0, 0.0625, 0.9010],
         ])
-        self.B = 0.7 * np.eye(4)
+        self.B = 0.8 * np.eye(4)
         self.b = 0.219 * np.ones(4)
         self.noise_truncation = float(noise_truncation)
         sigma = 0.02 / 3.0
@@ -551,6 +551,64 @@ class Temperature4DDynamics:
 
         # ||w||_2 <= truncation*sigma implies |1+w_i| <= 1+truncation*sigma.
         self.lipschitz = (1.0 + self.noise.radius) * np.abs(self.A)
+
+    def step(self, state, action, noise):
+        return ((1.0 + noise) * (jnp.asarray(self.A) @ state)
+                + jnp.asarray(self.B) @ action + jnp.asarray(self.b))
+
+class Temperature2DDynamics:
+    """Two coupled room temperatures with multiplicative ball-truncated noise."""
+    def __init__(self, args, noise_truncation=4.0):
+        self.n = 2
+        self.p = 2
+        self.state_variables = [f'temperature_room{i}' for i in range(1, 3)]
+        self.wrap = jnp.zeros(2, dtype=bool)
+
+        self.A = np.array([
+            [0.9010, 0.0625],
+            [0.0625, 0.9010],
+        ])
+        self.B = 0.8 * np.eye(2)
+        self.b = 0.219 * np.ones(2)
+        self.noise_truncation = float(noise_truncation)
+        sigma = 0.02 / 3.0
+        self.noise = TruncatedGaussianBallDistr(
+            dimension=2, stdev=sigma, truncation=self.noise_truncation
+        )
+        logger.info('-Assuming truncated gaussian disturbance')
+
+        # ||w||_2 <= truncation*sigma implies |1+w_i| <= 1+truncation*sigma.
+        self.lipschitz = (1.0 + self.noise.radius)* np.abs(self.A)
+
+    def step(self, state, action, noise):
+        return ((1.0 + noise) * (jnp.asarray(self.A) @ state)
+                + jnp.asarray(self.B) @ action + jnp.asarray(self.b))
+
+
+class Temperature3DDynamics:
+    """Three coupled room temperatures with multiplicative ball-truncated noise."""
+    def __init__(self, args, noise_truncation=4.0):
+        self.n = 3
+        self.p = 3
+        self.state_variables = [f'temperature_room{i}' for i in range(1, 4)]
+        self.wrap = jnp.zeros(3, dtype=bool)
+
+        self.A = np.array([
+            [9.010000000000000e-01,     6.250000000000000e-02,                         0],
+            [6.250000000000000e-02,     8.385000000000000e-01,     6.250000000000000e-02],
+            [0,     6.250000000000000e-02,     9.010000000000000e-01],
+        ])
+        self.B = 0.8 * np.eye(3)
+        self.b = 0.219 * np.ones(3)
+        self.noise_truncation = float(noise_truncation)
+        sigma = 0.02 / 3.0
+        self.noise = TruncatedGaussianBallDistr(
+            dimension=3, stdev=sigma, truncation=self.noise_truncation
+        )
+        logger.info('-Assuming truncated gaussian disturbance')
+
+        # ||w||_2 <= truncation*sigma implies |1+w_i| <= 1+truncation*sigma.
+        self.lipschitz = (1.0 + self.noise.radius)* np.abs(self.A)
 
     def step(self, state, action, noise):
         return ((1.0 + noise) * (jnp.asarray(self.A) @ state)
