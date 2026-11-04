@@ -39,6 +39,46 @@ pip install "jax[cuda13]"
 
 Apple Silicon should use the CPU version of JAX.
 
+## 3. Spot (for scLTL specifications)
+
+General scLTL specifications (e.g. `PackageDelivery`, `Dubins2D_scLTL`) are translated into a DFA with the `ltl2tgba` command-line tool from [Spot](https://spot.lre.epita.fr). The Python bindings are not needed, but `ltl2tgba` must be on your `PATH`. Benchmarks with a plain reach-avoid or safety (`G(safe)`) specification do not use Spot.
+
+Install Spot with one of the following options.
+
+On macOS via Homebrew:
+
+```bash
+brew install spot
+```
+
+Inside a conda environment, via conda-forge:
+
+```bash
+conda install -c conda-forge spot
+```
+
+On Linux, use the Debian/Ubuntu packages or build from source, following the [Spot installation instructions](https://spot.lre.epita.fr/install.html). A source build that skips the Python bindings looks as follows:
+
+```bash
+tar xzf spot-<version>.tar.gz
+cd spot-<version>
+./configure --disable-python
+make
+sudo make install
+```
+
+If you built Storm from source with its shipped copy of Spot, you can instead add the bundled binaries to your `PATH`:
+
+```bash
+export PATH="<storm_dir>/build/resources/3rdparty/spot/bin:$PATH"
+```
+
+Verify the installation with:
+
+```bash
+ltl2tgba --version
+```
+
 # Project entrypoints
 
 There is one entrypoint per abstraction:
