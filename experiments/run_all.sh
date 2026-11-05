@@ -29,7 +29,7 @@ bash experiments/run_benchmark.sh DoubleIntegrator_scLTL --seeds "0"
 # Expected runtime: ~17 min (measured)
 bash experiments/run_benchmark.sh Pendulum               --seeds "0"
 # Expected runtime: ~17 min (measured)
-bash experiments/run_benchmark.sh PendulumHard           --seeds "0"
+bash experiments/run_benchmark.sh PendulumHard           --seeds "0" --noise_distr gaussian
 
 
 # Expected runtime: ~4 h
