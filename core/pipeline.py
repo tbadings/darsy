@@ -98,8 +98,8 @@ def write_summary(args, model):
         'checkpoint': args.load_checkpoint,
     }
     # The abstraction settings are those of the run that built the abstraction (see prepare_abstraction)
-    for key in ABSTRACTION_SETTINGS + ('time_abstraction', 'time_synthesis', 'num_states', 'num_intervals',
-                                        'lower_bound', 'upper_bound', 'empirical_satprob'):
+    for key in ABSTRACTION_SETTINGS + ('time_abstraction', 'time_synthesis', 'num_states', 'num_actions',
+                                        'num_intervals', 'lower_bound', 'upper_bound', 'empirical_satprob'):
         rows[key] = args.summary.get(key)
 
     csv_path = args.output_dir / 'summary.csv'
@@ -269,6 +269,8 @@ def prepare_abstraction(args, stamp, name, build):
         # Abstraction settings, time and size from the run that built the checkpoint
         args.summary.update(_abstraction_settings(ckpt['args']))
         args.summary.update(getattr(ckpt['args'], 'summary', {}))
+        # Checkpoints written before num_actions was recorded
+        args.summary.setdefault('num_actions', int(np.asarray(partition.regions['actions']).shape[1]))
 
         # Name the output folder after the checkpointed model rather than --model, which is
         # typically left unset when a checkpoint is replayed.
@@ -331,6 +333,7 @@ def prepare_abstraction(args, stamp, name, build):
     args.summary.update(_abstraction_settings(args))
     args.summary['time_abstraction'] = time.time() - t
     args.summary['num_states'] = abstraction.nr_states  # including the absorbing state
+    args.summary['num_actions'] = int(np.asarray(partition.regions['actions']).shape[1])
     logger.info('<<< Generating %s abstraction took %.3f sec. >>>\n', name, args.summary['time_abstraction'])
 
     if args.save_checkpoint:

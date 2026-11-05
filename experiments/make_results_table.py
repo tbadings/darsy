@@ -8,7 +8,7 @@ The runs are read from <folder> and the table is written to <folder>/table_main.
 (<folder>/MultiRun_*/<timestamp>_<abstraction>_<model>/) contains a summary.csv and a run log, from which
 the table columns are taken as follows:
     |S|        num_states in summary.csv (including the absorbing state)
-    |A|        "(Number of actions: ...)" in the run log
+    |A|        num_actions in summary.csv (for older runs: "(Number of actions: ...)" in the run log)
     #Trans.    num_intervals in summary.csv (number of probability intervals in the abstraction)
     Abs. [s]   time_abstraction in summary.csv, with two decimals
     Syn. [s]   time_synthesis in summary.csv, with two decimals
@@ -84,7 +84,10 @@ def load_runs(results_dir):
             reader = csv.reader(csv_file)
             next(reader)  # header row: metric,value
             summary = dict(reader)
-        summary['num_actions'] = read_num_actions(summary_path.parent)
+        # Runs from before num_actions was added to summary.csv only report it in the log
+        num_actions = summary.get('num_actions')
+        summary['num_actions'] = (read_num_actions(summary_path.parent) if is_missing(num_actions)
+                                  else int(num_actions))
         summary['run_dir'] = summary_path.parent
 
         key = (summary['model'], summary['abstraction'], int(summary['num_samples']))
