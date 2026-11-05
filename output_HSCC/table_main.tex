@@ -1,8 +1,8 @@
-\begin{tabular}{llrr rrrr rrrr rrrr}
+\begin{tabular}{llrr | rrrr | rrrr | rrrr}
 \toprule
-\multirow{2}{*}{\textbf{Benchmark}} & \multirow{2}{*}{\textbf{Method}} & \multirow{2}{*}{$|S|$} & \multirow{2}{*}{$|A|$} & \multicolumn{4}{c}{1k samples} & \multicolumn{4}{c}{10k samples} & \multicolumn{4}{c}{100k samples} \\
+& & & \multicolumn{1}{r}{} & \multicolumn{4}{c}{1\,000 samples} & \multicolumn{4}{c}{10\,000 samples} & \multicolumn{4}{c}{100\,000 samples} \\
 \cmidrule(lr){5-8} \cmidrule(lr){9-12} \cmidrule(lr){13-16}
-& & & & \#Trans. & Abs.\ [s] & Syn.\ [s] & $\lambda$ & \#Trans. & Abs.\ [s] & Syn.\ [s] & $\lambda$ & \#Trans. & Abs.\ [s] & Syn.\ [s] & $\lambda$ \\
+\textbf{Benchmark} & \textbf{Method} & $|S|$ & $|A|$ & \#Trans. & Abs.\ [s] & Syn.\ [s] & $\lambda$ & \#Trans. & Abs.\ [s] & Syn.\ [s] & $\lambda$ & \#Trans. & Abs.\ [s] & Syn.\ [s] & $\lambda$ \\
 \midrule
 \multirow{2}{*}{\begin{tabular}{@{}l@{}}\textbf{Temp1D}\\reach-avoid\end{tabular}}
  & IMDP & $1\,002$ & $2$ & $7.41\cdot 10^{5}$ & $1.49$ & $0.42$ & $0.000$ & $7.41\cdot 10^{5}$ & $6.93$ & $0.63$ & $0.000$ & $7.41\cdot 10^{5}$ & $84.34$ & $1.41$ & $0.000$ \\

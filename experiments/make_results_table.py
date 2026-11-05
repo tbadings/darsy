@@ -1,11 +1,12 @@
 """
 Generate the main results table of the paper (tables/table_main.tex) from the experiment outputs.
 
-Usage (from anywhere):  python experiments/make_results_table.py [--results_dir DIR] [--output FILE]
+Usage (from the repository root):  python experiments/make_results_table.py <folder>
+e.g.:                               python experiments/make_results_table.py output_HSCC
 
-By default, the runs are read from output_HSCC/ and the table is written to tables/table_main.tex, both
-relative to the repository root (the tables/ folder is created if needed). Each run folder (<results_dir>/MultiRun_*/<timestamp>_<abstraction>_<model>/) contains a
-summary.csv and a run log, from which the table columns are taken as follows:
+The runs are read from <folder> and the table is written to <folder>/table_main.tex. Each run folder
+(<folder>/MultiRun_*/<timestamp>_<abstraction>_<model>/) contains a summary.csv and a run log, from which
+the table columns are taken as follows:
     |S|        num_states in summary.csv (including the absorbing state)
     |A|        "(Number of actions: ...)" in the run log
     #Trans.    num_intervals in summary.csv (number of probability intervals in the abstraction)
@@ -20,8 +21,6 @@ import csv
 import re
 from decimal import ROUND_FLOOR, Decimal
 from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Table rows, in order: (model name in summary.csv, displayed name, specification)
 BENCHMARKS = (
@@ -42,11 +41,13 @@ NUM_SAMPLES = (1000, 10000, 100000)  # one column group per number of samples
 
 MISSING = '--'
 
-HEADER = r'''\begin{tabular}{llrr rrrr rrrr rrrr}
+# The empty 4th cell of the top row is a \multicolumn so that, like the column groups, the top row has no
+# vertical line
+HEADER = r'''\begin{tabular}{llrr | rrrr | rrrr | rrrr}
 \toprule
-\multirow{2}{*}{\textbf{Benchmark}} & \multirow{2}{*}{\textbf{Method}} & \multirow{2}{*}{$|S|$} & \multirow{2}{*}{$|A|$} & \multicolumn{4}{c}{1k samples} & \multicolumn{4}{c}{10k samples} & \multicolumn{4}{c}{100k samples} \\
+& & & \multicolumn{1}{r}{} & \multicolumn{4}{c}{1\,000 samples} & \multicolumn{4}{c}{10\,000 samples} & \multicolumn{4}{c}{100\,000 samples} \\
 \cmidrule(lr){5-8} \cmidrule(lr){9-12} \cmidrule(lr){13-16}
-& & & & \#Trans. & Abs.\ [s] & Syn.\ [s] & $\lambda$ & \#Trans. & Abs.\ [s] & Syn.\ [s] & $\lambda$ & \#Trans. & Abs.\ [s] & Syn.\ [s] & $\lambda$ \\
+\textbf{Benchmark} & \textbf{Method} & $|S|$ & $|A|$ & \#Trans. & Abs.\ [s] & Syn.\ [s] & $\lambda$ & \#Trans. & Abs.\ [s] & Syn.\ [s] & $\lambda$ & \#Trans. & Abs.\ [s] & Syn.\ [s] & $\lambda$ \\
 \midrule
 '''
 FOOTER = '\\bottomrule\n\\end{tabular}%\n'
@@ -100,6 +101,7 @@ def is_missing(value):
 def fmt_int(value):
     '''Integer with thin spaces as thousands separators, e.g. $250\\,501$.'''
     return MISSING if is_missing(value) else f'${int(value):,}$'.replace(',', r'\,')
+
 
 
 def fmt_sci(value):
@@ -190,23 +192,24 @@ def make_table(runs):
 
 def main():
     parser = argparse.ArgumentParser(description='Generate the main results table of the paper.')
-    parser.add_argument('--results_dir', type=Path, default=REPO_ROOT / 'output_HSCC',
-                        help='Folder with one MultiRun_* subfolder per benchmark (default: output_HSCC)')
-    parser.add_argument('--output', type=Path, default=REPO_ROOT / 'tables' / 'table_main.tex',
-                        help='LaTeX file to write the table to (default: tables/table_main.tex)')
+    parser.add_argument('folder', type=Path,
+                        help='Folder with one MultiRun_* subfolder per benchmark (e.g., output_HSCC); '
+                             'the table is written to <folder>/table_main.tex')
     args = parser.parse_args()
 
-    runs = load_runs(args.results_dir)
+    if not args.folder.is_dir():
+        raise FileNotFoundError(f'Folder {args.folder} does not exist')
+    runs = load_runs(args.folder)
     if not runs:
-        raise FileNotFoundError(f'No summary.csv files found in {args.results_dir}/*/*/')
+        raise FileNotFoundError(f'No summary.csv files found in {args.folder}/*/*/')
 
     unused = sorted({model for model, _, _ in runs} - {model for model, *_ in BENCHMARKS})
     if unused:
         print(f'Note: runs of {", ".join(unused)} are not part of the table')
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(make_table(runs), encoding='utf-8')
-    print(f'Table written to {args.output}')
+    output = args.folder / 'table_main.tex'
+    output.write_text(make_table(runs), encoding='utf-8')
+    print(f'Table written to {output}')
 
 
 if __name__ == '__main__':
