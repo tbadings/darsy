@@ -1,0 +1,44 @@
+17:03:37 INFO     Run 2026-11-04_17-03-37 | model=Temperature1D_reach | noise=gaussian | batch=10 | frs_batch=100
+17:03:37 INFO     Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-03-23_Temperature1D_reach/2026-11-04_17-03-37_IMDP_Temperature1D_reach
+17:03:37 INFO     
+=== Generate IMDP from scratch ===
+17:03:37 INFO     Parsing model...
+17:03:37 INFO     Model parsing done (took 0.010 sec.)
+17:03:37 INFO     <<< Generating model took 0.034 sec. >>>
+
+17:03:37 INFO     Define dense partition...
+17:03:37 INFO     - Partition with max cell width [0.003]
+17:03:37 INFO     (Number of states: 1001)
+17:03:37 INFO     (Number of actions: 2)
+17:03:37 INFO     === Start forward reachability computations ===
+17:03:38 INFO     - Max state-slice to compute probability intervals over: (369,)
+17:03:38 INFO     - Max coarse block-slice (factor 1): (369,)
+17:03:38 INFO     Reachability computations took 0.338 sec.
+17:03:38 INFO     - Coarse partition: 1001 blocks (factor 1) over fine grid 1001
+17:03:38 INFO     === Start transition probability intervals computation ===
+17:03:38 INFO     Union bound over 740740 intervals: per interval beta = 1.350e-09
+17:05:02 INFO     - Debug state 166:
+17:05:02 INFO       Enabled actions: [0 1]
+17:05:02 INFO       Successors shape: (2, 369)
+17:05:02 INFO       P_absorbing: [[0.         0.06354841]
+ [0.         0.02650694]]
+17:05:02 INFO     Probability intervals computed (took 83.856 sec.)
+17:05:02 INFO     Initial state x0=[19.5] → state index 166
+
+17:05:02 INFO     <<< Generating IMDP abstraction took 84.340 sec. >>>
+
+17:05:02 INFO     === IMDP reach-avoid synthesis (solver=jax) ===
+17:05:02 INFO     - Robust DP: 834 states with free rows in 1 chunks of 834 states (kept on device)
+17:05:03 INFO     Policy iteration converged after 15 iterations
+17:05:03 INFO     Upper-bound evaluation converged after 12 iterations
+17:05:03 INFO     <<< Synthesis took 1.407 sec. >>>
+
+17:05:03 INFO     Initial state s0=166: value=0.000125
+17:05:03 INFO     Initial state s0=166: upper bound=1.000000
+17:05:03 INFO     === Start Monte Carlo simulations ===
+17:05:04 INFO     Empirical satisfaction probability: 0.994
+17:05:04 INFO     Run summary saved to /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-03-23_Temperature1D_reach/2026-11-04_17-03-37_IMDP_Temperature1D_reach/summary.csv
+17:05:05 INFO     
+=== Run finished. Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-03-23_Temperature1D_reach/2026-11-04_17-03-37_IMDP_Temperature1D_reach ===
+17:05:05 INFO     ====================
+

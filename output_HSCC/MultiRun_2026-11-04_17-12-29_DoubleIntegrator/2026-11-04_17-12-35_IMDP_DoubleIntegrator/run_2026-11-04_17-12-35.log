@@ -1,0 +1,63 @@
+17:12:35 INFO     Run 2026-11-04_17-12-35 | model=DoubleIntegrator | noise=triangular | batch=10 | frs_batch=100
+17:12:35 INFO     Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-12-29_DoubleIntegrator/2026-11-04_17-12-35_IMDP_DoubleIntegrator
+17:12:35 INFO     
+=== Generate IMDP from scratch ===
+17:12:35 INFO     Parsing model...
+17:12:35 INFO     Model parsing done (took 0.004 sec.)
+17:12:35 INFO     <<< Generating model took 0.016 sec. >>>
+
+17:12:35 INFO     Define dense partition...
+17:12:35 INFO     - Partition with max cell width [0.8235294117647058, 0.4117647058823529]
+17:12:35 INFO     (Number of states: 2704)
+17:12:35 INFO     (Number of actions: 21)
+17:12:35 INFO     === Start forward reachability computations ===
+17:12:36 INFO     - Max state-slice to compute probability intervals over: (5, 4)
+17:12:36 INFO     - Max coarse block-slice (factor 1): (5, 4)
+17:12:36 INFO     Reachability computations took 0.620 sec.
+17:12:36 INFO     - Coarse partition: 52x52 blocks (factor 1) over fine grid 52x52
+17:12:36 INFO     === Start transition probability intervals computation ===
+17:12:36 INFO     Union bound over 1192464 intervals: per interval beta = 8.386e-10
+17:12:41 INFO     - Debug state 1358:
+17:12:41 INFO       Enabled actions: [ 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20]
+17:12:41 INFO       Successors shape: (21, 20)
+17:12:41 INFO       P_absorbing: [[0.         1.        ]
+ [0.         1.        ]
+ [0.         1.        ]
+ [0.         1.        ]
+ [0.         1.        ]
+ [0.         0.88415027]
+ [0.         0.00215691]
+ [0.         0.00215691]
+ [0.         0.00215691]
+ [0.         0.00215691]
+ [0.         0.00215691]
+ [0.         0.00215691]
+ [0.         0.00215691]
+ [0.         0.00215691]
+ [0.         0.00215691]
+ [0.         0.00215691]
+ [0.         0.00215691]
+ [0.         0.00215691]
+ [0.         0.00215691]
+ [0.         0.00215691]
+ [0.         0.00215691]]
+17:12:41 INFO     Probability intervals computed (took 5.577 sec.)
+17:12:41 INFO     Initial state x0=[ 0 -8] → state index 1358
+
+17:12:41 INFO     <<< Generating IMDP abstraction took 6.380 sec. >>>
+
+17:12:41 INFO     === IMDP reach-avoid synthesis (solver=jax) ===
+17:12:41 INFO     - Robust DP: 2604 states with free rows in 1 chunks of 2604 states (kept on device)
+17:12:42 INFO     Policy iteration converged after 8 iterations
+17:12:42 INFO     Upper-bound evaluation converged after 7 iterations
+17:12:42 INFO     <<< Synthesis took 0.447 sec. >>>
+
+17:12:42 INFO     Initial state s0=1358: value=0.991400
+17:12:42 INFO     Initial state s0=1358: upper bound=1.000000
+17:12:42 INFO     === Start Monte Carlo simulations ===
+17:12:42 INFO     Empirical satisfaction probability: 1.0
+17:12:42 INFO     Run summary saved to /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-12-29_DoubleIntegrator/2026-11-04_17-12-35_IMDP_DoubleIntegrator/summary.csv
+17:12:43 INFO     
+=== Run finished. Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-12-29_DoubleIntegrator/2026-11-04_17-12-35_IMDP_DoubleIntegrator ===
+17:12:43 INFO     ====================
+

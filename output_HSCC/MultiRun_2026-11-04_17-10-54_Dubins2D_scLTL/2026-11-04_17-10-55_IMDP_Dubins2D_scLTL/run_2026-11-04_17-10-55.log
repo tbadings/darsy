@@ -1,0 +1,82 @@
+17:10:55 INFO     Run 2026-11-04_17-10-55 | model=Dubins2D_scLTL | noise=triangular | batch=10 | frs_batch=100
+17:10:55 INFO     Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-10-54_Dubins2D_scLTL/2026-11-04_17-10-55_IMDP_Dubins2D_scLTL
+17:10:55 INFO     
+=== Generate IMDP from scratch ===
+17:10:55 INFO     Parsing model...
+17:10:55 INFO     Model parsing done (took 0.011 sec.)
+17:10:55 INFO     <<< Generating model took 0.024 sec. >>>
+
+17:10:55 INFO     Define dense partition...
+17:10:55 INFO     - Partition with max cell width [0.03333333333333333, 0.03333333333333333]
+17:10:55 INFO     (Number of states: 900)
+17:10:55 INFO     (Number of actions: 40)
+17:10:55 INFO     === Start forward reachability computations ===
+17:10:55 INFO     - Max state-slice to compute probability intervals over: (5, 5)
+17:10:55 INFO     - Max coarse block-slice (factor 1): (5, 5)
+17:10:55 INFO     Reachability computations took 0.362 sec.
+17:10:55 INFO     - Coarse partition: 30x30 blocks (factor 1) over fine grid 30x30
+17:10:55 INFO     === Start transition probability intervals computation ===
+17:10:55 INFO     Union bound over 936000 intervals: per interval beta = 1.068e-09
+17:10:56 INFO     - Debug state 58:
+17:10:56 INFO       Enabled actions: [ 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23
+ 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39]
+17:10:56 INFO       Successors shape: (40, 25)
+17:10:56 INFO       P_absorbing: [[0.         0.02112397]
+ [0.         0.2346991 ]
+ [0.         0.99959579]
+ [0.         1.        ]
+ [0.         1.        ]
+ [0.         0.02112397]
+ [0.         0.03993011]
+ [0.         0.50064686]
+ [0.         0.98220371]
+ [0.         1.        ]
+ [0.         0.02112397]
+ [0.         0.02112397]
+ [0.         0.02112397]
+ [0.         0.02112397]
+ [0.         0.02112397]
+ [0.         0.02112397]
+ [0.         0.02112397]
+ [0.         0.02112397]
+ [0.         0.02112397]
+ [0.         0.02112397]
+ [0.         0.02112397]
+ [0.         0.02112397]
+ [0.         0.16582076]
+ [0.         0.57348084]
+ [0.         0.93791524]
+ [0.         0.02112397]
+ [0.         0.25075782]
+ [0.         0.99506102]
+ [0.         1.        ]
+ [0.         1.        ]
+ [0.         0.02112397]
+ [0.         0.12021095]
+ [0.         0.91258152]
+ [0.         1.        ]
+ [0.         1.        ]
+ [0.         0.02112397]
+ [0.         0.2346991 ]
+ [0.         0.99959579]
+ [0.         1.        ]
+ [0.         1.        ]]
+17:10:56 INFO     Probability intervals computed (took 0.682 sec.)
+17:10:56 INFO     Initial state x0=[0.05 0.95] → state index 58
+
+17:10:56 INFO     <<< Generating IMDP abstraction took 1.279 sec. >>>
+
+17:10:56 INFO     === IMDP scLTL synthesis (solver=jax) ===
+17:10:56 INFO     - Robust DP: 900 states with free rows in 1 chunks of 900 states (kept on device)
+17:10:57 INFO     Policy iteration converged after 30 iterations
+17:10:57 INFO     Upper-bound evaluation converged after 18 iterations
+17:10:57 INFO     <<< Synthesis took 1.024 sec. >>>
+
+17:10:57 INFO     Initial product state (58,1): lower=0.474880, upper=1.000000
+17:10:57 INFO     === Start sc-LTL Monte Carlo simulations ===
+17:10:59 INFO     Empirical sc-LTL satisfaction probability: 1.000000
+17:10:59 INFO     Run summary saved to /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-10-54_Dubins2D_scLTL/2026-11-04_17-10-55_IMDP_Dubins2D_scLTL/summary.csv
+17:10:59 INFO     
+=== Run finished. Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-10-54_Dubins2D_scLTL/2026-11-04_17-10-55_IMDP_Dubins2D_scLTL ===
+17:10:59 INFO     ====================
+

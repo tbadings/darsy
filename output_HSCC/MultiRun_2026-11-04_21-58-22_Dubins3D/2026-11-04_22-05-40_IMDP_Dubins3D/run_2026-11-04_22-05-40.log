@@ -1,0 +1,51 @@
+22:05:40 INFO     Run 2026-11-04_22-05-40 | model=Dubins3D | noise=triangular | batch=10 | frs_batch=100
+22:05:40 INFO     Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_21-58-22_Dubins3D/2026-11-04_22-05-40_IMDP_Dubins3D
+22:05:40 INFO     
+=== Generate IMDP from scratch ===
+22:05:40 INFO     Parsing model...
+22:05:40 INFO     Model parsing done (took 0.004 sec.)
+22:05:40 INFO     <<< Generating model took 0.016 sec. >>>
+
+22:05:40 INFO     Define dense partition...
+22:05:40 INFO     - Partition with max cell width [0.2, 0.2, 0.12566370614359174]
+22:05:40 INFO     (Number of states: 127500)
+22:05:40 INFO     (Number of actions: 9)
+22:05:40 INFO     === Start forward reachability computations ===
+22:05:46 INFO     - Max state-slice to compute probability intervals over: (5, 5, 4)
+22:05:46 INFO     - Max coarse block-slice (factor 1): (5, 5, 4)
+22:05:46 INFO     Reachability computations took 5.684 sec.
+22:05:46 INFO     - Coarse partition: 51x50x50 blocks (factor 1) over fine grid 51x50x50
+22:05:46 INFO     === Start transition probability intervals computation ===
+22:05:46 INFO     Union bound over 115897500 intervals: per interval beta = 8.628e-12
+23:00:12 INFO     - Debug state 5124:
+23:00:12 INFO       Enabled actions: [0 1 2 3 4 5 6 7 8]
+23:00:12 INFO       Successors shape: (9, 100)
+23:00:12 INFO       P_absorbing: [[0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 2.61657075e-04]
+ [0.00000000e+00 2.61657075e-04]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 2.61657075e-04]
+ [0.00000000e+00 2.61657075e-04]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 2.61657075e-04]
+ [0.00000000e+00 2.61657075e-04]]
+23:00:12 INFO     Probability intervals computed (took 3266.002 sec.)
+23:00:12 INFO     Initial state x0=[0.5 0.5 0. ] → state index 5124
+
+23:00:12 INFO     <<< Generating IMDP abstraction took 3271.960 sec. >>>
+
+23:00:12 INFO     === IMDP reach-avoid synthesis (solver=jax) ===
+23:00:12 INFO     - Robust DP: 113750 states with free rows in 25 chunks of 4614 states (kept on device)
+23:00:45 INFO     Policy iteration converged after 22 iterations
+23:00:46 INFO     Upper-bound evaluation converged after 14 iterations
+23:00:46 INFO     <<< Synthesis took 34.110 sec. >>>
+
+23:00:46 INFO     Initial state s0=5124: value=0.991692
+23:00:46 INFO     Initial state s0=5124: upper bound=1.000000
+23:00:46 INFO     === Start Monte Carlo simulations ===
+23:00:54 INFO     Empirical satisfaction probability: 1.0
+23:00:54 INFO     Run summary saved to /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_21-58-22_Dubins3D/2026-11-04_22-05-40_IMDP_Dubins3D/summary.csv
+23:00:55 INFO     
+=== Run finished. Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_21-58-22_Dubins3D/2026-11-04_22-05-40_IMDP_Dubins3D ===
+23:00:55 INFO     ====================
+

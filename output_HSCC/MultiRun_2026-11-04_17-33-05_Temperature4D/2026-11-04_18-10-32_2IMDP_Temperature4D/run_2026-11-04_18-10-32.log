@@ -1,0 +1,56 @@
+18:10:32 INFO     Run 2026-11-04_18-10-32 | model=Temperature4D | noise=triangular | batch=10 | frs_batch=100
+18:10:32 INFO     Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-33-05_Temperature4D/2026-11-04_18-10-32_2IMDP_Temperature4D
+18:10:32 INFO     
+=== Generate 2IMDP from scratch ===
+18:10:32 INFO     -Assuming truncated gaussian disturbance
+18:10:32 INFO     Parsing model...
+18:10:32 INFO     Model parsing done (took 0.003 sec.)
+18:10:32 INFO     <<< Generating model took 0.069 sec. >>>
+
+18:10:32 INFO     Define dense partition...
+18:10:32 INFO     - Partition with max cell width [0.4166666666666667, 0.4166666666666667, 0.4166666666666667, 0.4166666666666667]
+18:10:32 INFO     (Number of states: 20736)
+18:10:32 INFO     (Number of actions: 16)
+18:10:32 INFO     === Start forward reachability computations ===
+18:10:36 INFO     - Max state-slice to compute probability intervals over: (6, 6, 6, 6)
+18:10:36 INFO     - Max coarse block-slice (factor 3): (2, 2, 2, 2)
+18:10:36 INFO     Reachability computations took 3.605 sec.
+18:10:36 INFO     - Coarse partition: 4x4x4x4 blocks (factor 3) over fine grid 12x12x12x12
+18:10:36 INFO     === Start transition probability intervals computation ===
+18:10:36 INFO     Union bound over 435621888 intervals: per interval beta = 2.296e-12
+18:13:23 INFO     - Debug state 11310:
+18:13:23 INFO       Enabled actions: [ 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15]
+18:13:23 INFO       Successors shape: (16, 1296)
+18:13:23 INFO       P_absorbing: [[0.         0.00274555]
+ [0.         0.00274555]
+ [0.         0.00274555]
+ [0.         0.00274555]
+ [0.         0.00274555]
+ [0.         0.00274555]
+ [0.         0.00274555]
+ [0.         0.00274555]
+ [0.         0.00274555]
+ [0.         0.00274555]
+ [0.         0.00274555]
+ [0.         0.00274555]
+ [0.         0.00274555]
+ [0.         0.00274555]
+ [0.         0.00274555]
+ [0.         0.00274555]]
+18:13:23 INFO       Coarse successors shape: (16, 16)
+18:13:23 INFO     Probability intervals computed (took 167.519 sec.)
+18:13:23 INFO     Initial state x0=[21. 21. 21. 21.] → state index 11310
+
+18:13:23 INFO     <<< Generating 2IMDP abstraction took 171.265 sec. >>>
+
+18:13:23 INFO     === 2IMDP safety synthesis (solver=jax) ===
+18:13:23 INFO     - Robust DP: 20736 states with free rows in 103 chunks of 202 states (streamed from the abstraction)
+18:21:47 INFO     <<< Synthesis took 504.033 sec. >>>
+
+18:21:47 INFO     Safety horizon=15, initial state=11310: lower=0.959262, upper=1.000000
+18:21:49 INFO     Finite-horizon safety empirical probability (1000 runs): 1.000000
+18:21:49 INFO     Run summary saved to /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-33-05_Temperature4D/2026-11-04_18-10-32_2IMDP_Temperature4D/summary.csv
+18:21:49 INFO     
+=== Run finished. Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-33-05_Temperature4D/2026-11-04_18-10-32_2IMDP_Temperature4D ===
+18:21:49 INFO     ====================
+

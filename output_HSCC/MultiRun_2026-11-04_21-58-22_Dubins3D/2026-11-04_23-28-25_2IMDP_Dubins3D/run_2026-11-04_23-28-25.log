@@ -1,0 +1,52 @@
+23:28:25 INFO     Run 2026-11-04_23-28-25 | model=Dubins3D | noise=triangular | batch=10 | frs_batch=100
+23:28:25 INFO     Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_21-58-22_Dubins3D/2026-11-04_23-28-25_2IMDP_Dubins3D
+23:28:25 INFO     
+=== Generate 2IMDP from scratch ===
+23:28:25 INFO     Parsing model...
+23:28:25 INFO     Model parsing done (took 0.004 sec.)
+23:28:25 INFO     <<< Generating model took 0.017 sec. >>>
+
+23:28:25 INFO     Define dense partition...
+23:28:25 INFO     - Partition with max cell width [0.2, 0.2, 0.12566370614359174]
+23:28:25 INFO     (Number of states: 127500)
+23:28:25 INFO     (Number of actions: 9)
+23:28:25 INFO     === Start forward reachability computations ===
+23:28:30 INFO     - Max state-slice to compute probability intervals over: (5, 5, 4)
+23:28:30 INFO     - Max coarse block-slice (factor 3): (1, 2, 1)
+23:28:30 INFO     Reachability computations took 5.655 sec.
+23:28:30 INFO     - Coarse partition: 17x17x17 blocks (factor 3) over fine grid 51x50x50
+23:28:30 INFO     === Start transition probability intervals computation ===
+23:28:30 INFO     Union bound over 118192500 intervals: per interval beta = 8.461e-12
+01:00:39 INFO     - Debug state 5124:
+01:00:39 INFO       Enabled actions: [0 1 2 3 4 5 6 7 8]
+01:00:39 INFO       Successors shape: (9, 100)
+01:00:39 INFO       P_absorbing: [[0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 2.61852971e-04]
+ [0.00000000e+00 2.61852971e-04]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 2.61852971e-04]
+ [0.00000000e+00 2.61852971e-04]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 2.61852971e-04]
+ [0.00000000e+00 2.61852971e-04]]
+01:00:39 INFO       Coarse successors shape: (9, 2)
+01:00:39 INFO     Probability intervals computed (took 5528.388 sec.)
+01:00:39 INFO     Initial state x0=[0.5 0.5 0. ] → state index 5124
+
+01:00:39 INFO     <<< Generating 2IMDP abstraction took 5534.285 sec. >>>
+
+01:00:39 INFO     === 2IMDP reach-avoid synthesis (solver=jax) ===
+01:00:39 INFO     Reach-avoid specification detected. Using standard robust value iteration.
+01:00:39 INFO     - Robust DP: 113750 states with free rows in 25 chunks of 4614 states (streamed from the abstraction)
+01:07:57 INFO     Policy iteration converged after 22 iterations
+01:08:24 INFO     Upper-bound evaluation converged after 14 iterations
+01:08:24 INFO     <<< Synthesis took 465.648 sec. >>>
+
+01:08:24 INFO     Initial state s0=5124: lower=0.991687, upper=1.000000
+01:08:25 INFO     === Start Monte Carlo simulations ===
+01:08:32 INFO     Empirical satisfaction probability: 1.0
+01:08:32 INFO     Run summary saved to /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_21-58-22_Dubins3D/2026-11-04_23-28-25_2IMDP_Dubins3D/summary.csv
+01:08:33 INFO     
+=== Run finished. Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_21-58-22_Dubins3D/2026-11-04_23-28-25_2IMDP_Dubins3D ===
+01:08:33 INFO     ====================
+

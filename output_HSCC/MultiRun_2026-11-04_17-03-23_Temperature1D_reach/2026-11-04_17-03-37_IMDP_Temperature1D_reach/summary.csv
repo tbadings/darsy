@@ -1,0 +1,23 @@
+metric,value
+model,Temperature1D_reach
+abstraction,IMDP
+specification,(!unsafe) U (goal)
+noise,Gaussian
+solver,jax
+horizon,none
+checkpoint,
+coarse_factor,1
+num_samples,100000
+frs_num_samples,100
+alpha,0.0
+pac_beta,0.001
+seed,0
+batch_size,10
+frs_batch_size,100
+time_abstraction,84.33976197242737
+time_synthesis,1.4067111015319824
+num_states,1002
+num_intervals,740740
+lower_bound,0.0001254136870138146
+upper_bound,1.0
+empirical_satprob,0.994

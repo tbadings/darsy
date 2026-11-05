@@ -1,0 +1,64 @@
+17:17:00 INFO     Run 2026-11-04_17-17-00 | model=DoubleIntegrator_scLTL | noise=triangular | batch=10 | frs_batch=100
+17:17:00 INFO     Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-15-46_DoubleIntegrator_scLTL/2026-11-04_17-17-00_2IMDP_DoubleIntegrator_scLTL
+17:17:00 INFO     
+=== Generate 2IMDP from scratch ===
+17:17:00 INFO     Parsing model...
+17:17:00 INFO     Model parsing done (took 0.004 sec.)
+17:17:00 INFO     <<< Generating model took 0.017 sec. >>>
+
+17:17:00 INFO     Define dense partition...
+17:17:00 INFO     - Partition with max cell width [0.8235294117647058, 0.4117647058823529]
+17:17:00 INFO     (Number of states: 2808)
+17:17:00 INFO     (Number of actions: 21)
+17:17:00 INFO     === Start forward reachability computations ===
+17:17:00 INFO     - Max state-slice to compute probability intervals over: (5, 4)
+17:17:00 INFO     - Max coarse block-slice (factor 3): (1, 2)
+17:17:00 INFO     Reachability computations took 0.611 sec.
+17:17:00 INFO     - Coarse partition: 18x18 blocks (factor 3) over fine grid 54x52
+17:17:00 INFO     === Start transition probability intervals computation ===
+17:17:00 INFO     Union bound over 1356264 intervals: per interval beta = 7.373e-10
+17:17:12 INFO     - Debug state 1410:
+17:17:12 INFO       Enabled actions: [ 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20]
+17:17:12 INFO       Successors shape: (21, 20)
+17:17:12 INFO       P_absorbing: [[0.         1.        ]
+ [0.         1.        ]
+ [0.         1.        ]
+ [0.         1.        ]
+ [0.         1.        ]
+ [0.         0.88234895]
+ [0.         0.00216976]
+ [0.         0.00216976]
+ [0.         0.00216976]
+ [0.         0.00216976]
+ [0.         0.00216976]
+ [0.         0.00216976]
+ [0.         0.00216976]
+ [0.         0.00216976]
+ [0.         0.00216976]
+ [0.         0.00216976]
+ [0.         0.00216976]
+ [0.         0.00216976]
+ [0.         0.00216976]
+ [0.         0.00216976]
+ [0.         0.00216976]]
+17:17:12 INFO       Coarse successors shape: (21, 2)
+17:17:12 INFO     Probability intervals computed (took 11.154 sec.)
+17:17:12 INFO     Initial state x0=[ 0 -8] → state index 1410
+
+17:17:12 INFO     <<< Generating 2IMDP abstraction took 11.898 sec. >>>
+
+17:17:12 INFO     === 2IMDP scLTL synthesis (solver=jax) ===
+17:17:12 INFO     General sc-LTL specification detected. Constructing DFA and product 2IMDP.
+17:17:12 INFO     - Robust DP: 2808 states with free rows in 1 chunks of 2808 states (kept on device)
+17:17:14 INFO     Policy iteration converged after 12 iterations
+17:17:14 INFO     Upper-bound evaluation converged after 13 iterations
+17:17:14 INFO     <<< Synthesis took 2.611 sec. >>>
+
+17:17:14 INFO     Initial product state (s,z)=(1410,0): lower=0.978374, upper=1.000000
+17:17:14 INFO     === Start sc-LTL Monte Carlo simulations ===
+17:17:15 INFO     Empirical sc-LTL satisfaction probability: 1.000000
+17:17:15 INFO     Run summary saved to /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-15-46_DoubleIntegrator_scLTL/2026-11-04_17-17-00_2IMDP_DoubleIntegrator_scLTL/summary.csv
+17:17:16 INFO     
+=== Run finished. Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-15-46_DoubleIntegrator_scLTL/2026-11-04_17-17-00_2IMDP_DoubleIntegrator_scLTL ===
+17:17:16 INFO     ====================
+

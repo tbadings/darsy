@@ -1,0 +1,23 @@
+metric,value
+model,DoubleIntegrator_scLTL
+abstraction,IMDP
+specification,F (origin & F (left & F right))
+noise,Triangular
+solver,jax
+horizon,none
+checkpoint,
+coarse_factor,1
+num_samples,1000
+frs_num_samples,100
+alpha,0.0
+pac_beta,0.001
+seed,0
+batch_size,10
+frs_batch_size,100
+time_abstraction,1.833662986755371
+time_synthesis,0.9069437980651855
+num_states,2809
+num_intervals,1238328
+lower_bound,0.7945909558487098
+upper_bound,1.0
+empirical_satprob,1.0

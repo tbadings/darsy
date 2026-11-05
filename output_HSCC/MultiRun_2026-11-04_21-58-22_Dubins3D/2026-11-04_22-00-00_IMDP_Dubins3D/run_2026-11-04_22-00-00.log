@@ -1,0 +1,51 @@
+22:00:00 INFO     Run 2026-11-04_22-00-00 | model=Dubins3D | noise=triangular | batch=10 | frs_batch=100
+22:00:00 INFO     Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_21-58-22_Dubins3D/2026-11-04_22-00-00_IMDP_Dubins3D
+22:00:00 INFO     
+=== Generate IMDP from scratch ===
+22:00:00 INFO     Parsing model...
+22:00:00 INFO     Model parsing done (took 0.004 sec.)
+22:00:00 INFO     <<< Generating model took 0.016 sec. >>>
+
+22:00:00 INFO     Define dense partition...
+22:00:00 INFO     - Partition with max cell width [0.2, 0.2, 0.12566370614359174]
+22:00:00 INFO     (Number of states: 127500)
+22:00:00 INFO     (Number of actions: 9)
+22:00:00 INFO     === Start forward reachability computations ===
+22:00:06 INFO     - Max state-slice to compute probability intervals over: (5, 5, 4)
+22:00:06 INFO     - Max coarse block-slice (factor 1): (5, 5, 4)
+22:00:06 INFO     Reachability computations took 5.657 sec.
+22:00:06 INFO     - Coarse partition: 51x50x50 blocks (factor 1) over fine grid 51x50x50
+22:00:06 INFO     === Start transition probability intervals computation ===
+22:00:06 INFO     Union bound over 115897500 intervals: per interval beta = 8.628e-12
+22:04:54 INFO     - Debug state 5124:
+22:04:54 INFO       Enabled actions: [0 1 2 3 4 5 6 7 8]
+22:04:54 INFO       Successors shape: (9, 100)
+22:04:54 INFO       P_absorbing: [[0.         1.        ]
+ [0.         0.00261349]
+ [0.         0.00261349]
+ [0.         1.        ]
+ [0.         0.00261349]
+ [0.         0.00261349]
+ [0.         1.        ]
+ [0.         0.00261349]
+ [0.         0.00261349]]
+22:04:54 INFO     Probability intervals computed (took 288.678 sec.)
+22:04:54 INFO     Initial state x0=[0.5 0.5 0. ] → state index 5124
+
+22:04:54 INFO     <<< Generating IMDP abstraction took 294.608 sec. >>>
+
+22:04:54 INFO     === IMDP reach-avoid synthesis (solver=jax) ===
+22:04:54 INFO     - Robust DP: 113750 states with free rows in 25 chunks of 4614 states (kept on device)
+22:05:29 INFO     Policy iteration converged after 22 iterations
+22:05:30 INFO     Upper-bound evaluation converged after 14 iterations
+22:05:30 INFO     <<< Synthesis took 36.193 sec. >>>
+
+22:05:30 INFO     Initial state s0=5124: value=0.918706
+22:05:30 INFO     Initial state s0=5124: upper bound=1.000000
+22:05:31 INFO     === Start Monte Carlo simulations ===
+22:05:38 INFO     Empirical satisfaction probability: 1.0
+22:05:38 INFO     Run summary saved to /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_21-58-22_Dubins3D/2026-11-04_22-00-00_IMDP_Dubins3D/summary.csv
+22:05:39 INFO     
+=== Run finished. Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_21-58-22_Dubins3D/2026-11-04_22-00-00_IMDP_Dubins3D ===
+22:05:39 INFO     ====================
+

@@ -1,0 +1,23 @@
+metric,value
+model,MountainCar
+abstraction,IMDP
+specification,(!unsafe) U (goal)
+noise,Triangular
+solver,jax
+horizon,none
+checkpoint,
+coarse_factor,1
+num_samples,100000
+frs_num_samples,100
+alpha,0.0
+pac_beta,0.001
+seed,0
+batch_size,10
+frs_batch_size,100
+time_abstraction,1037.085237979889
+time_synthesis,202.33501601219177
+num_states,250501
+num_intervals,32314500
+lower_bound,0.9746656841912102
+upper_bound,1.0
+empirical_satprob,1.0

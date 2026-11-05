@@ -1,7 +1,7 @@
 # Public benchmark registry: import available models and map CLI names to classes.
 from .Dubins3D import Dubins3D, Dubins3D_scLTL
 from .Dubins2D_scLTL import Dubins2D_scLTL
-from .Pendulum import Pendulum
+from .Pendulum import Pendulum, PendulumHard
 from .MountainCar import MountainCar
 from .Integrators import DoubleIntegrator, DoubleIntegrator_scLTL
 from .Test1D import Test1D
@@ -21,6 +21,7 @@ def create_model(args):
         'Dubins3D': Dubins3D,
         'Dubins3D_scLTL': Dubins3D_scLTL,
         'Pendulum': Pendulum,
+        'PendulumHard': PendulumHard,
         'MountainCar': MountainCar,
         'DoubleIntegrator': DoubleIntegrator,
         'DoubleIntegrator_scLTL': DoubleIntegrator_scLTL,

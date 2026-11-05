@@ -1,0 +1,23 @@
+metric,value
+model,DoubleIntegrator
+abstraction,IMDP
+specification,(!unsafe) U (goal)
+noise,Triangular
+solver,jax
+horizon,none
+checkpoint,
+coarse_factor,1
+num_samples,1000
+frs_num_samples,100
+alpha,0.0
+pac_beta,0.001
+seed,0
+batch_size,10
+frs_batch_size,100
+time_abstraction,1.8738679885864258
+time_synthesis,0.4324507713317871
+num_states,2705
+num_intervals,1192464
+lower_bound,0.9172539391648151
+upper_bound,1.0
+empirical_satprob,1.0

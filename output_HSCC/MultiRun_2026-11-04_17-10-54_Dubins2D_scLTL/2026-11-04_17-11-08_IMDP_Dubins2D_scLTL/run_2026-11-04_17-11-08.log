@@ -1,0 +1,82 @@
+17:11:08 INFO     Run 2026-11-04_17-11-08 | model=Dubins2D_scLTL | noise=triangular | batch=10 | frs_batch=100
+17:11:08 INFO     Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-10-54_Dubins2D_scLTL/2026-11-04_17-11-08_IMDP_Dubins2D_scLTL
+17:11:08 INFO     
+=== Generate IMDP from scratch ===
+17:11:08 INFO     Parsing model...
+17:11:08 INFO     Model parsing done (took 0.011 sec.)
+17:11:08 INFO     <<< Generating model took 0.024 sec. >>>
+
+17:11:08 INFO     Define dense partition...
+17:11:08 INFO     - Partition with max cell width [0.03333333333333333, 0.03333333333333333]
+17:11:08 INFO     (Number of states: 900)
+17:11:08 INFO     (Number of actions: 40)
+17:11:08 INFO     === Start forward reachability computations ===
+17:11:09 INFO     - Max state-slice to compute probability intervals over: (5, 5)
+17:11:09 INFO     - Max coarse block-slice (factor 1): (5, 5)
+17:11:09 INFO     Reachability computations took 0.344 sec.
+17:11:09 INFO     - Coarse partition: 30x30 blocks (factor 1) over fine grid 30x30
+17:11:09 INFO     === Start transition probability intervals computation ===
+17:11:09 INFO     Union bound over 936000 intervals: per interval beta = 1.068e-09
+17:11:33 INFO     - Debug state 58:
+17:11:33 INFO       Enabled actions: [ 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23
+ 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39]
+17:11:33 INFO       Successors shape: (40, 25)
+17:11:33 INFO       P_absorbing: [[0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 1.76467883e-01]
+ [0.00000000e+00 9.88021103e-01]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 7.95798229e-03]
+ [0.00000000e+00 4.04649353e-01]
+ [0.00000000e+00 9.49732721e-01]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 9.29042292e-02]
+ [0.00000000e+00 4.70497468e-01]
+ [0.00000000e+00 8.82843403e-01]
+ [0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 1.59576446e-01]
+ [0.00000000e+00 9.76427746e-01]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 5.95141897e-02]
+ [0.00000000e+00 8.52535476e-01]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 2.13479942e-04]
+ [0.00000000e+00 1.76467883e-01]
+ [0.00000000e+00 9.88021103e-01]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 1.00000000e+00]]
+17:11:33 INFO     Probability intervals computed (took 24.432 sec.)
+17:11:33 INFO     Initial state x0=[0.05 0.95] → state index 58
+
+17:11:33 INFO     <<< Generating IMDP abstraction took 25.001 sec. >>>
+
+17:11:33 INFO     === IMDP scLTL synthesis (solver=jax) ===
+17:11:33 INFO     - Robust DP: 900 states with free rows in 1 chunks of 900 states (kept on device)
+17:11:34 INFO     Policy iteration converged after 30 iterations
+17:11:34 INFO     Upper-bound evaluation converged after 19 iterations
+17:11:34 INFO     <<< Synthesis took 0.918 sec. >>>
+
+17:11:34 INFO     Initial product state (58,1): lower=0.993677, upper=1.000000
+17:11:34 INFO     === Start sc-LTL Monte Carlo simulations ===
+17:11:36 INFO     Empirical sc-LTL satisfaction probability: 1.000000
+17:11:36 INFO     Run summary saved to /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-10-54_Dubins2D_scLTL/2026-11-04_17-11-08_IMDP_Dubins2D_scLTL/summary.csv
+17:11:37 INFO     
+=== Run finished. Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-10-54_Dubins2D_scLTL/2026-11-04_17-11-08_IMDP_Dubins2D_scLTL ===
+17:11:37 INFO     ====================
+

@@ -1,0 +1,23 @@
+metric,value
+model,Dubins2D_scLTL
+abstraction,IMDP
+specification,((!unsafe) & (!wet | ((!goal) U carpet))) U (goal & (!unsafe))
+noise,Triangular
+solver,jax
+horizon,none
+checkpoint,
+coarse_factor,1
+num_samples,100000
+frs_num_samples,100
+alpha,0.0
+pac_beta,0.001
+seed,0
+batch_size,10
+frs_batch_size,100
+time_abstraction,25.000691890716553
+time_synthesis,0.9176630973815918
+num_states,901
+num_intervals,936000
+lower_bound,0.9936766527730165
+upper_bound,1.0
+empirical_satprob,1.0

@@ -1,0 +1,23 @@
+metric,value
+model,Dubins3D
+abstraction,2IMDP
+specification,(!unsafe) U (goal)
+noise,Triangular
+solver,jax
+horizon,none
+checkpoint,
+coarse_factor,3
+num_samples,1000
+frs_num_samples,100
+alpha,0.0
+pac_beta,0.001
+seed,0
+batch_size,10
+frs_batch_size,100
+time_abstraction,66.42431092262268
+time_synthesis,559.6042611598969
+num_states,127501
+num_intervals,118192500
+lower_bound,0.3672575475726623
+upper_bound,0.9999999999999999
+empirical_satprob,1.0

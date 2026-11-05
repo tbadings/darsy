@@ -1,0 +1,40 @@
+17:07:24 INFO     Run 2026-11-04_17-07-24 | model=Temperature1D_safety | noise=gaussian | batch=10 | frs_batch=100
+17:07:24 INFO     Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-07-20_Temperature1D_safety/2026-11-04_17-07-24_IMDP_Temperature1D_safety
+17:07:24 INFO     
+=== Generate IMDP from scratch ===
+17:07:24 INFO     Parsing model...
+17:07:24 INFO     Model parsing done (took 0.011 sec.)
+17:07:24 INFO     <<< Generating model took 0.036 sec. >>>
+
+17:07:24 INFO     Define dense partition...
+17:07:24 INFO     - Partition with max cell width [0.03]
+17:07:24 INFO     (Number of states: 101)
+17:07:24 INFO     (Number of actions: 2)
+17:07:25 INFO     === Start forward reachability computations ===
+17:07:25 INFO     - Max state-slice to compute probability intervals over: (38,)
+17:07:25 INFO     - Max coarse block-slice (factor 1): (38,)
+17:07:25 INFO     Reachability computations took 0.324 sec.
+17:07:25 INFO     - Coarse partition: 101 blocks (factor 1) over fine grid 101
+17:07:25 INFO     === Start transition probability intervals computation ===
+17:07:25 INFO     Union bound over 7878 intervals: per interval beta = 1.269e-07
+17:07:25 INFO     - Debug state 16:
+17:07:25 INFO       Enabled actions: [0 1]
+17:07:25 INFO       Successors shape: (2, 38)
+17:07:25 INFO       P_absorbing: [[0.         0.09215688]
+ [0.         0.01059479]]
+17:07:25 INFO     Probability intervals computed (took 0.489 sec.)
+17:07:25 INFO     Initial state x0=[19.5] → state index 16
+
+17:07:25 INFO     <<< Generating IMDP abstraction took 0.963 sec. >>>
+
+17:07:25 INFO     === IMDP safety synthesis (solver=jax) ===
+17:07:25 INFO     - Robust DP: 101 states with free rows in 1 chunks of 101 states (kept on device)
+17:07:26 INFO     <<< Synthesis took 0.267 sec. >>>
+
+17:07:26 INFO     Safety horizon=20, initial state=16: lower=0.302064, upper=1.000000
+17:07:27 INFO     Finite-horizon safety empirical probability (1000 runs): 0.993000
+17:07:27 INFO     Run summary saved to /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-07-20_Temperature1D_safety/2026-11-04_17-07-24_IMDP_Temperature1D_safety/summary.csv
+17:07:27 INFO     
+=== Run finished. Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-07-20_Temperature1D_safety/2026-11-04_17-07-24_IMDP_Temperature1D_safety ===
+17:07:27 INFO     ====================
+

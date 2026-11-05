@@ -1,0 +1,41 @@
+17:07:41 INFO     Run 2026-11-04_17-07-41 | model=Temperature1D_safety | noise=gaussian | batch=10 | frs_batch=100
+17:07:41 INFO     Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-07-20_Temperature1D_safety/2026-11-04_17-07-41_2IMDP_Temperature1D_safety
+17:07:41 INFO     
+=== Generate 2IMDP from scratch ===
+17:07:41 INFO     Parsing model...
+17:07:41 INFO     Model parsing done (took 0.011 sec.)
+17:07:41 INFO     <<< Generating model took 0.035 sec. >>>
+
+17:07:41 INFO     Define dense partition...
+17:07:41 INFO     - Partition with max cell width [0.03]
+17:07:42 INFO     (Number of states: 101)
+17:07:42 INFO     (Number of actions: 2)
+17:07:42 INFO     === Start forward reachability computations ===
+17:07:42 INFO     - Max state-slice to compute probability intervals over: (38,)
+17:07:42 INFO     - Max coarse block-slice (factor 3): (13,)
+17:07:42 INFO     Reachability computations took 0.325 sec.
+17:07:42 INFO     - Coarse partition: 34 blocks (factor 3) over fine grid 101
+17:07:42 INFO     === Start transition probability intervals computation ===
+17:07:42 INFO     Union bound over 10504 intervals: per interval beta = 9.520e-08
+17:07:44 INFO     - Debug state 16:
+17:07:44 INFO       Enabled actions: [0 1]
+17:07:44 INFO       Successors shape: (2, 38)
+17:07:44 INFO       P_absorbing: [[0.         0.08305279]
+ [0.         0.00793623]]
+17:07:44 INFO       Coarse successors shape: (2, 13)
+17:07:44 INFO     Probability intervals computed (took 2.108 sec.)
+17:07:44 INFO     Initial state x0=[19.5] → state index 16
+
+17:07:44 INFO     <<< Generating 2IMDP abstraction took 2.592 sec. >>>
+
+17:07:44 INFO     === 2IMDP safety synthesis (solver=jax) ===
+17:07:44 INFO     - Robust DP: 101 states with free rows in 1 chunks of 101 states (kept on device)
+17:07:44 INFO     <<< Synthesis took 0.343 sec. >>>
+
+17:07:44 INFO     Safety horizon=20, initial state=16: lower=0.800626, upper=1.000000
+17:07:45 INFO     Finite-horizon safety empirical probability (1000 runs): 0.993000
+17:07:45 INFO     Run summary saved to /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-07-20_Temperature1D_safety/2026-11-04_17-07-41_2IMDP_Temperature1D_safety/summary.csv
+17:07:46 INFO     
+=== Run finished. Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-07-20_Temperature1D_safety/2026-11-04_17-07-41_2IMDP_Temperature1D_safety ===
+17:07:46 INFO     ====================
+

@@ -1,0 +1,84 @@
+17:11:55 INFO     Run 2026-11-04_17-11-55 | model=Dubins2D_scLTL | noise=triangular | batch=10 | frs_batch=100
+17:11:55 INFO     Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-10-54_Dubins2D_scLTL/2026-11-04_17-11-55_2IMDP_Dubins2D_scLTL
+17:11:55 INFO     
+=== Generate 2IMDP from scratch ===
+17:11:55 INFO     Parsing model...
+17:11:55 INFO     Model parsing done (took 0.011 sec.)
+17:11:55 INFO     <<< Generating model took 0.023 sec. >>>
+
+17:11:55 INFO     Define dense partition...
+17:11:55 INFO     - Partition with max cell width [0.03333333333333333, 0.03333333333333333]
+17:11:56 INFO     (Number of states: 900)
+17:11:56 INFO     (Number of actions: 40)
+17:11:56 INFO     === Start forward reachability computations ===
+17:11:56 INFO     - Max state-slice to compute probability intervals over: (5, 5)
+17:11:56 INFO     - Max coarse block-slice (factor 3): (1, 1)
+17:11:56 INFO     Reachability computations took 0.350 sec.
+17:11:56 INFO     - Coarse partition: 10x10 blocks (factor 3) over fine grid 30x30
+17:11:56 INFO     === Start transition probability intervals computation ===
+17:11:56 INFO     Union bound over 972000 intervals: per interval beta = 1.029e-09
+17:12:24 INFO     - Debug state 58:
+17:12:24 INFO       Enabled actions: [ 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23
+ 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39]
+17:12:24 INFO       Successors shape: (40, 25)
+17:12:24 INFO       P_absorbing: [[0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 1.76475193e-01]
+ [0.00000000e+00 9.88023121e-01]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 7.95974068e-03]
+ [0.00000000e+00 4.04658726e-01]
+ [0.00000000e+00 9.49736834e-01]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 9.29098163e-02]
+ [0.00000000e+00 4.70506991e-01]
+ [0.00000000e+00 8.82849490e-01]
+ [0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 1.59583473e-01]
+ [0.00000000e+00 9.76430583e-01]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 5.95187569e-02]
+ [0.00000000e+00 8.52542195e-01]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 2.13857265e-04]
+ [0.00000000e+00 1.76475193e-01]
+ [0.00000000e+00 9.88023121e-01]
+ [0.00000000e+00 1.00000000e+00]
+ [0.00000000e+00 1.00000000e+00]]
+17:12:24 INFO       Coarse successors shape: (40, 1)
+17:12:24 INFO     Probability intervals computed (took 27.565 sec.)
+17:12:24 INFO     Initial state x0=[0.05 0.95] → state index 58
+
+17:12:24 INFO     <<< Generating 2IMDP abstraction took 28.145 sec. >>>
+
+17:12:24 INFO     === 2IMDP scLTL synthesis (solver=jax) ===
+17:12:24 INFO     General sc-LTL specification detected. Constructing DFA and product 2IMDP.
+17:12:24 INFO     - Robust DP: 900 states with free rows in 1 chunks of 900 states (kept on device)
+17:12:26 INFO     Policy iteration converged after 26 iterations
+17:12:26 INFO     Upper-bound evaluation converged after 20 iterations
+17:12:26 INFO     <<< Synthesis took 2.916 sec. >>>
+
+17:12:26 INFO     Initial product state (s,z)=(58,1): lower=0.993896, upper=1.000000
+17:12:27 INFO     === Start sc-LTL Monte Carlo simulations ===
+17:12:28 INFO     Empirical sc-LTL satisfaction probability: 1.000000
+17:12:28 INFO     Run summary saved to /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-10-54_Dubins2D_scLTL/2026-11-04_17-11-55_2IMDP_Dubins2D_scLTL/summary.csv
+17:12:29 INFO     
+=== Run finished. Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-10-54_Dubins2D_scLTL/2026-11-04_17-11-55_2IMDP_Dubins2D_scLTL ===
+17:12:29 INFO     ====================
+

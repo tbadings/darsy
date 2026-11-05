@@ -1,0 +1,52 @@
+02:18:29 INFO     Run 2026-11-05_02-18-29 | model=Dubins3D_scLTL | noise=triangular | batch=10 | frs_batch=100
+02:18:29 INFO     Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-05_01-08-33_Dubins3D_scLTL/2026-11-05_02-18-29_2IMDP_Dubins3D_scLTL
+02:18:29 INFO     
+=== Generate 2IMDP from scratch ===
+02:18:29 INFO     Parsing model...
+02:18:29 INFO     Model parsing done (took 0.004 sec.)
+02:18:29 INFO     <<< Generating model took 0.017 sec. >>>
+
+02:18:29 INFO     Define dense partition...
+02:18:29 INFO     - Partition with max cell width [0.2, 0.2, 0.12566370614359174]
+02:18:30 INFO     (Number of states: 127500)
+02:18:30 INFO     (Number of actions: 9)
+02:18:30 INFO     === Start forward reachability computations ===
+02:18:35 INFO     - Max state-slice to compute probability intervals over: (5, 5, 4)
+02:18:35 INFO     - Max coarse block-slice (factor 3): (1, 2, 1)
+02:18:35 INFO     Reachability computations took 5.664 sec.
+02:18:35 INFO     - Coarse partition: 17x17x17 blocks (factor 3) over fine grid 51x50x50
+02:18:35 INFO     === Start transition probability intervals computation ===
+02:18:35 INFO     Union bound over 118192500 intervals: per interval beta = 8.461e-12
+02:19:36 INFO     - Debug state 5124:
+02:19:36 INFO       Enabled actions: [0 1 2 3 4 5 6 7 8]
+02:19:36 INFO       Successors shape: (9, 100)
+02:19:36 INFO       P_absorbing: [[0.         1.        ]
+ [0.         0.02584878]
+ [0.         0.02584878]
+ [0.         1.        ]
+ [0.         0.02584878]
+ [0.         0.02584878]
+ [0.         1.        ]
+ [0.         0.02584878]
+ [0.         0.02584878]]
+02:19:36 INFO       Coarse successors shape: (9, 2)
+02:19:36 INFO     Probability intervals computed (took 60.593 sec.)
+02:19:36 INFO     Initial state x0=[0.5 0.5 0. ] → state index 5124
+
+02:19:36 INFO     <<< Generating 2IMDP abstraction took 66.516 sec. >>>
+
+02:19:36 INFO     === 2IMDP scLTL synthesis (solver=jax) ===
+02:19:36 INFO     General sc-LTL specification detected. Constructing DFA and product 2IMDP.
+02:19:36 INFO     - Robust DP: 127500 states with free rows in 56 chunks of 2307 states (streamed from the abstraction)
+02:34:09 INFO     Policy iteration converged after 24 iterations
+02:34:42 INFO     Upper-bound evaluation converged after 12 iterations
+02:34:42 INFO     <<< Synthesis took 906.151 sec. >>>
+
+02:34:42 INFO     Initial product state (s,z)=(5124,0): lower=0.341034, upper=1.000000
+02:34:42 INFO     === Start sc-LTL Monte Carlo simulations ===
+02:34:45 INFO     Empirical sc-LTL satisfaction probability: 1.000000
+02:34:45 INFO     Run summary saved to /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-05_01-08-33_Dubins3D_scLTL/2026-11-05_02-18-29_2IMDP_Dubins3D_scLTL/summary.csv
+02:34:45 INFO     
+=== Run finished. Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-05_01-08-33_Dubins3D_scLTL/2026-11-05_02-18-29_2IMDP_Dubins3D_scLTL ===
+02:34:45 INFO     ====================
+

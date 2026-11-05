@@ -1,0 +1,47 @@
+17:08:17 INFO     Run 2026-11-04_17-08-17 | model=Temperature3D | noise=triangular | batch=10 | frs_batch=100
+17:08:17 INFO     Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-08-16_Temperature3D/2026-11-04_17-08-17_IMDP_Temperature3D
+17:08:17 INFO     
+=== Generate IMDP from scratch ===
+17:08:17 INFO     -Assuming truncated gaussian disturbance
+17:08:17 INFO     Parsing model...
+17:08:17 INFO     Model parsing done (took 0.003 sec.)
+17:08:17 INFO     <<< Generating model took 0.068 sec. >>>
+
+17:08:17 INFO     Define dense partition...
+17:08:17 INFO     - Partition with max cell width [0.4166666666666667, 0.4166666666666667, 0.4166666666666667]
+17:08:17 INFO     (Number of states: 1728)
+17:08:17 INFO     (Number of actions: 8)
+17:08:17 INFO     === Start forward reachability computations ===
+17:08:18 INFO     - Max state-slice to compute probability intervals over: (6, 6, 6)
+17:08:18 INFO     - Max coarse block-slice (factor 1): (6, 6, 6)
+17:08:18 INFO     Reachability computations took 0.782 sec.
+17:08:18 INFO     - Coarse partition: 12x12x12 blocks (factor 1) over fine grid 12x12x12
+17:08:18 INFO     === Start transition probability intervals computation ===
+17:08:18 INFO     Union bound over 2999808 intervals: per interval beta = 3.334e-10
+17:08:19 INFO     - Debug state 942:
+17:08:19 INFO       Enabled actions: [0 1 2 3 4 5 6 7]
+17:08:19 INFO       Successors shape: (8, 216)
+17:08:19 INFO       P_absorbing: [[0.         0.02226339]
+ [0.         0.02226339]
+ [0.         0.02226339]
+ [0.         0.02226339]
+ [0.         0.02226339]
+ [0.         0.02226339]
+ [0.         0.02226339]
+ [0.         0.02226339]]
+17:08:19 INFO     Probability intervals computed (took 1.252 sec.)
+17:08:19 INFO     Initial state x0=[21. 21. 21.] → state index 942
+
+17:08:19 INFO     <<< Generating IMDP abstraction took 2.171 sec. >>>
+
+17:08:19 INFO     === IMDP safety synthesis (solver=jax) ===
+17:08:19 INFO     - Robust DP: 1728 states with free rows in 1 chunks of 1728 states (kept on device)
+17:08:20 INFO     <<< Synthesis took 0.577 sec. >>>
+
+17:08:20 INFO     Safety horizon=15, initial state=942: lower=0.712188, upper=1.000000
+17:08:21 INFO     Finite-horizon safety empirical probability (1000 runs): 1.000000
+17:08:21 INFO     Run summary saved to /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-08-16_Temperature3D/2026-11-04_17-08-17_IMDP_Temperature3D/summary.csv
+17:08:21 INFO     
+=== Run finished. Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-08-16_Temperature3D/2026-11-04_17-08-17_IMDP_Temperature3D ===
+17:08:21 INFO     ====================
+

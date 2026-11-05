@@ -1,0 +1,46 @@
+19:53:19 INFO     Run 2026-11-04_19-53-19 | model=MountainCar | noise=triangular | batch=10 | frs_batch=100
+19:53:19 INFO     Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_19-53-17_MountainCar/2026-11-04_19-53-19_IMDP_MountainCar
+19:53:19 INFO     
+=== Generate IMDP from scratch ===
+19:53:19 INFO     Parsing model...
+19:53:19 INFO     Model parsing done (took 0.004 sec.)
+19:53:19 INFO     <<< Generating model took 0.017 sec. >>>
+
+19:53:19 INFO     Define dense partition...
+19:53:19 INFO     - Partition with max cell width [0.0035999999999999995, 0.00028000000000000003]
+19:53:19 INFO     (Number of states: 250500)
+19:53:19 INFO     (Number of actions: 3)
+19:53:19 INFO     === Start forward reachability computations ===
+19:53:21 INFO     - Max state-slice to compute probability intervals over: (6, 7)
+19:53:21 INFO     - Max coarse block-slice (factor 1): (6, 7)
+19:53:21 INFO     Reachability computations took 2.257 sec.
+19:53:21 INFO     - Coarse partition: 501x500 blocks (factor 1) over fine grid 501x500
+19:53:21 INFO     === Start transition probability intervals computation ===
+19:53:21 INFO     Union bound over 32314500 intervals: per interval beta = 3.095e-11
+19:53:46 INFO     - Debug state 83250:
+19:53:46 INFO       Enabled actions: [0 1 2]
+19:53:46 INFO       Successors shape: (3, 42)
+19:53:46 INFO       P_absorbing: [[0.         0.02458468]
+ [0.         0.02458468]
+ [0.         0.02458468]]
+19:53:46 INFO     Probability intervals computed (took 25.283 sec.)
+19:53:46 INFO     Initial state x0=[-0.6  0. ] → state index 83250
+
+19:53:46 INFO     <<< Generating IMDP abstraction took 27.795 sec. >>>
+
+19:53:46 INFO     === IMDP reach-avoid synthesis (solver=jax) ===
+19:53:46 INFO     - Robust DP: 240000 states with free rows in 8 chunks of 32513 states (kept on device)
+19:57:40 INFO     Policy iteration converged after 64 iterations
+19:57:49 INFO     Upper-bound evaluation converged after 130 iterations
+19:57:49 INFO     <<< Synthesis took 242.203 sec. >>>
+
+19:57:49 INFO     Initial state s0=83250: value=0.055787
+19:57:49 INFO     Initial state s0=83250: upper bound=1.000000
+19:57:49 INFO     === Start Monte Carlo simulations ===
+19:58:18 INFO     Empirical satisfaction probability: 1.0
+19:58:18 INFO     Run summary saved to /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_19-53-17_MountainCar/2026-11-04_19-53-19_IMDP_MountainCar/summary.csv
+19:58:24 INFO     Plotting MountainCar trajectory gif...
+19:58:47 INFO     
+=== Run finished. Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_19-53-17_MountainCar/2026-11-04_19-53-19_IMDP_MountainCar ===
+19:58:47 INFO     ====================
+

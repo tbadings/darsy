@@ -1,0 +1,46 @@
+17:20:17 INFO     Run 2026-11-04_17-20-17 | model=Pendulum | noise=triangular | batch=10 | frs_batch=100
+17:20:17 INFO     Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-19-16_Pendulum/2026-11-04_17-20-17_IMDP_Pendulum
+17:20:17 INFO     
+=== Generate IMDP from scratch ===
+17:20:17 INFO     Parsing model...
+17:20:17 INFO     Model parsing done (took 0.004 sec.)
+17:20:17 INFO     <<< Generating model took 0.017 sec. >>>
+
+17:20:17 INFO     Define dense partition...
+17:20:17 INFO     - Partition with max cell width [0.031415926535897934, 0.08]
+17:20:17 INFO     (Number of states: 40200)
+17:20:17 INFO     (Number of actions: 3)
+17:20:17 INFO     === Start forward reachability computations ===
+17:20:18 INFO     - Max state-slice to compute probability intervals over: (6, 7)
+17:20:18 INFO     - Max coarse block-slice (factor 1): (6, 7)
+17:20:18 INFO     Reachability computations took 0.623 sec.
+17:20:18 INFO     - Coarse partition: 200x201 blocks (factor 1) over fine grid 200x201
+17:20:18 INFO     === Start transition probability intervals computation ===
+17:20:18 INFO     Union bound over 5185800 intervals: per interval beta = 1.928e-10
+17:23:50 INFO     - Debug state 40099:
+17:23:50 INFO       Enabled actions: [0 1 2]
+17:23:50 INFO       Successors shape: (3, 42)
+17:23:50 INFO       P_absorbing: [[0.        0.0002306]
+ [0.        0.0002306]
+ [0.        0.0002306]]
+17:23:50 INFO     Probability intervals computed (took 212.064 sec.)
+17:23:50 INFO     Initial state x0=[3.11017673 0.        ] → state index 40099
+
+17:23:50 INFO     <<< Generating IMDP abstraction took 212.876 sec. >>>
+
+17:23:50 INFO     === IMDP reach-avoid synthesis (solver=jax) ===
+17:23:50 INFO     - Robust DP: 39700 states with free rows in 2 chunks of 32513 states (kept on device)
+17:23:58 INFO     Policy iteration converged after 16 iterations
+17:23:59 INFO     Upper-bound evaluation converged after 23 iterations
+17:23:59 INFO     <<< Synthesis took 8.753 sec. >>>
+
+17:23:59 INFO     Initial state s0=40099: value=0.992465
+17:23:59 INFO     Initial state s0=40099: upper bound=1.000000
+17:24:00 INFO     === Start Monte Carlo simulations ===
+17:24:04 INFO     Empirical satisfaction probability: 1.0
+17:24:04 INFO     Run summary saved to /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-19-16_Pendulum/2026-11-04_17-20-17_IMDP_Pendulum/summary.csv
+17:24:05 INFO     Plotting Pendulum trajectory gif...
+17:24:06 INFO     
+=== Run finished. Output directory: /Users/tbadings/Documents/Code/HSCC2027/darsy/output/MultiRun_2026-11-04_17-19-16_Pendulum/2026-11-04_17-20-17_IMDP_Pendulum ===
+17:24:06 INFO     ====================
+
