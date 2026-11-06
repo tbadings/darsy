@@ -11,13 +11,15 @@ The runs are read from <folder> and the tables are written to <folder>/table_mai
 the table columns are taken as follows:
     |S|        num_states in summary.csv (including the absorbing state)
     |A|        num_actions in summary.csv (for older runs: "(Number of actions: ...)" in the run log)
-    #Trans.    num_intervals in summary.csv (number of probability intervals in the abstraction)
-    Abs. [s]   time_abstraction in summary.csv, with two decimals
-    Syn. [s]   time_synthesis in summary.csv, with two decimals
+    #Trans.    num_intervals in summary.csv (number of probability intervals in the abstraction; must be the
+               same for all numbers of samples)
+    Abs. [s]   time_abstraction in summary.csv, with one decimal
+    Syn. [s]   time_synthesis in summary.csv, with one decimal
     lambda     lower_bound in summary.csv, rounded down so that the reported value is still a lower bound
     Emp.       empirical_satprob in summary.csv (fraction of Monte Carlo simulations that satisfy the
                specification), with three decimals; only in the extended table
-Cells without a matching run are filled with '--'.
+Per benchmark and number of samples, the best Abs., Syn. (lowest) and lambda (highest) over the methods are
+set in bold. Cells without a matching run are filled with '--'.
 """
 
 import argparse
@@ -47,9 +49,17 @@ NUM_SAMPLES = (1000, 10000, 100000)  # one column group per number of samples
 
 MISSING = '--'
 
+# Columns that are the same for all numbers of samples (after Benchmark and Method). The number of transitions
+# does not depend on the number of samples: the successor states of each state-action pair follow from the
+# forward reachable sets, which use a fixed number of samples (frs_num_samples); more samples only tighten the
+# intervals.
+SHARED_COLUMNS = (r'$|S|$', r'$|A|$', r'\#Trans.')
 # Columns per sample-size group; the extended table adds the empirical satisfaction probability after lambda
-GROUP_COLUMNS = (r'\#Trans.', r'Abs.\ [s]', r'Syn.\ [s]', r'$\lambda$')
+GROUP_COLUMNS = (r'Abs.\ [s]', r'Syn.\ [s]', r'$\lambda$')
 EXTENDED_GROUP_COLUMNS = GROUP_COLUMNS + ('Emp.',)
+# Per benchmark and number of samples, the best value of these group columns over the methods is set in bold:
+# min for runtimes, max for the lower bound. Columns not listed here (e.g., Emp.) are not highlighted.
+HIGHLIGHT = {0: min, 1: min, 2: max}  # index within the group -> best
 
 
 def make_header(group_columns):
@@ -61,16 +71,18 @@ def make_header(group_columns):
     '''
 
     width = len(group_columns)
-    spec = 'llrr' + ''.join(' | ' + 'r' * width for _ in NUM_SAMPLES)
+    first = 3 + len(SHARED_COLUMNS)  # index of the first column of the first group
+    spec = 'll' + 'r' * len(SHARED_COLUMNS) + ''.join(' | ' + 'r' * width for _ in NUM_SAMPLES)
     groups = ' & '.join(f'\\multicolumn{{{width}}}{{c}}{{{fmt_int(n)[1:-1]} samples}}' for n in NUM_SAMPLES)
-    rules = ' '.join(f'\\cmidrule(lr){{{5 + i * width}-{4 + (i + 1) * width}}}' for i in range(len(NUM_SAMPLES)))
-    titles = ' & '.join(group_columns * len(NUM_SAMPLES))
-    # The empty 4th cell of the top row is a \multicolumn so that, like the column groups, the top row has no
-    # vertical line
+    rules = ' '.join(f'\\cmidrule(lr){{{first + i * width}-{first - 1 + (i + 1) * width}}}'
+                     for i in range(len(NUM_SAMPLES)))
+    titles = ' & '.join(SHARED_COLUMNS + group_columns * len(NUM_SAMPLES))
+    # The empty last cell before the column groups in the top row is a \multicolumn so that, like the column
+    # groups, the top row has no vertical line
     return (f'\\begin{{tabular}}{{{spec}}}\n\\toprule\n'
-            f'& & & \\multicolumn{{1}}{{r}}{{}} & {groups} \\\\\n'
+            f'{"& " * (first - 2)}\\multicolumn{{1}}{{r}}{{}} & {groups} \\\\\n'
             f'{rules}\n'
-            f'\\textbf{{Benchmark}} & \\textbf{{Method}} & $|S|$ & $|A|$ & {titles} \\\\\n'
+            f'\\textbf{{Benchmark}} & \\textbf{{Method}} & {titles} \\\\\n'
             '\\midrule\n')
 
 
@@ -140,10 +152,10 @@ def fmt_sci(value):
 
 
 def fmt_time(value):
-    '''Runtime in seconds with two decimals, e.g. $0.26$, $18.73$, $5547.59$.'''
+    '''Runtime in seconds with one decimal, e.g. $0.3$, $18.7$, $5547.6$.'''
     if is_missing(value):
         return MISSING
-    return f'${float(value):.2f}$'
+    return f'${float(value):.1f}$'
 
 
 def fmt_lower_bound(value):
@@ -184,7 +196,7 @@ def make_row(runs, model, method, extended=False):
     :param model: Model name in summary.csv.
     :param method: Abstraction (IMDP or 2IMDP).
     :param extended: If True, add the empirical satisfaction probability after the lower bound.
-    :return: The LaTeX row, without the benchmark column.
+    :return: The cells of the row, without the benchmark column.
     '''
 
     method_runs = [runs.get((model, method, n)) for n in NUM_SAMPLES]
@@ -193,6 +205,7 @@ def make_row(runs, model, method, extended=False):
         method,
         fmt_int(shared_value(method_runs, 'num_states', description)),
         fmt_int(shared_value(method_runs, 'num_actions', description)),
+        fmt_sci(shared_value(method_runs, 'num_intervals', description)),
     ]
     for n, run in zip(NUM_SAMPLES, method_runs):
         if run is None:
@@ -201,14 +214,40 @@ def make_row(runs, model, method, extended=False):
             cells += [MISSING] * (len(EXTENDED_GROUP_COLUMNS) if extended else len(GROUP_COLUMNS))
             continue
         cells += [
-            fmt_sci(run['num_intervals']),
             fmt_time(run['time_abstraction']),
             fmt_time(run['time_synthesis']),
             fmt_lower_bound(run['lower_bound']),
         ]
         if extended:
             cells.append(fmt_probability(run.get('empirical_satprob')))
-    return ' & ' + ' & '.join(cells) + ' \\\\\n'
+    return cells
+
+
+def highlight_best(rows, extended):
+    '''
+    Set the best value per column in bold (\\boldsymbol), comparing the displayed (rounded) values over the
+    methods. Ties are all set in bold. A column is left as is if a method has no value for it, or if the best
+    value is a lower bound of 0 (no method gives a nontrivial bound).
+
+    :param rows: Cells of the rows of one benchmark (one row per method), as returned by make_row; changed in
+                 place.
+    :param extended: Whether the rows are for the extended table.
+    '''
+
+    width = len(EXTENDED_GROUP_COLUMNS if extended else GROUP_COLUMNS)
+    first = 1 + len(SHARED_COLUMNS)  # index of the first cell of the first group (cell 0 is the method)
+    for group in range(len(NUM_SAMPLES)):
+        for offset, best in HIGHLIGHT.items():
+            col = first + group * width + offset
+            if any(row[col] == MISSING for row in rows):
+                continue
+            values = [float(row[col].strip('$')) for row in rows]
+            best_value = best(values)
+            if best is max and best_value == 0:
+                continue
+            for row, value in zip(rows, values):
+                if value == best_value:
+                    row[col] = f'$\\boldsymbol{{{row[col].strip("$")}}}$'
 
 
 def make_table(runs, extended=False):
@@ -224,7 +263,9 @@ def make_table(runs, extended=False):
     for model, name, specification in BENCHMARKS:
         block = (f'\\multirow{{{len(METHODS)}}}{{*}}{{\\begin{{tabular}}{{@{{}}l@{{}}}}\\textbf{{{name}}}'
                  f'\\\\\\textit{{({specification})}}\\end{{tabular}}}}\n')
-        block += ''.join(make_row(runs, model, method, extended) for method in METHODS)
+        rows = [make_row(runs, model, method, extended) for method in METHODS]
+        highlight_best(rows, extended)
+        block += ''.join(' & ' + ' & '.join(row) + ' \\\\\n' for row in rows)
         blocks.append(block)
     header = make_header(EXTENDED_GROUP_COLUMNS if extended else GROUP_COLUMNS)
     return header + '\\midrule\n'.join(blocks) + FOOTER
