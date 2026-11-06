@@ -1,0 +1,24 @@
+metric,value
+model,PendulumHard
+abstraction,2IMDP
+specification,(!unsafe) U (goal)
+noise,Gaussian
+solver,jax
+horizon,none
+checkpoint,
+coarse_factor,3
+num_samples,1000
+frs_num_samples,100
+alpha,0.0
+pac_beta,0.001
+seed,0
+batch_size,10
+frs_batch_size,100
+time_abstraction,8.813344955444336
+time_synthesis,23.652313947677612
+num_states,40201
+num_actions,3
+num_intervals,26049600
+lower_bound,8.602131554874826e-60
+upper_bound,0.9999999999994449
+empirical_satprob,0.997

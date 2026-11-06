@@ -1,10 +1,12 @@
 """
-Generate the main results table of the paper (tables/table_main.tex) from the experiment outputs.
+Generate the main results table of the paper (tables/table_main.tex) from the experiment outputs, plus an
+extended version (table_main_extended.tex) that also reports the empirical satisfaction probability.
 
 Usage (from the repository root):  python experiments/make_results_table.py <folder>
 e.g.:                               python experiments/make_results_table.py output_HSCC
 
-The runs are read from <folder> and the table is written to <folder>/table_main.tex. Each run folder
+The runs are read from <folder> and the tables are written to <folder>/table_main.tex and
+<folder>/table_main_extended.tex. Each run folder
 (<folder>/MultiRun_*/<timestamp>_<abstraction>_<model>/) contains a summary.csv and a run log, from which
 the table columns are taken as follows:
     |S|        num_states in summary.csv (including the absorbing state)
@@ -13,6 +15,8 @@ the table columns are taken as follows:
     Abs. [s]   time_abstraction in summary.csv, with two decimals
     Syn. [s]   time_synthesis in summary.csv, with two decimals
     lambda     lower_bound in summary.csv, rounded down so that the reported value is still a lower bound
+    Emp.       empirical_satprob in summary.csv (fraction of Monte Carlo simulations that satisfy the
+               specification), with three decimals; only in the extended table
 Cells without a matching run are filled with '--'.
 """
 
@@ -30,8 +34,10 @@ BENCHMARKS = (
     ('Temperature3D', 'Temp3D', 'safety'),
     ('Temperature4D', 'Temp4D', 'safety'),
     ('DoubleIntegrator', 'DoubleInt', 'reach-avoid'),
+    ('DoubleIntegrator_scLTL', 'DoubleInt', 'scLTL'),
     ('MountainCar', 'MountainCar', 'reach-avoid'),
-    ('Pendulum', 'Pendulum', 'reach-avoid'),
+    ('Pendulum', 'Pendulum-T', 'reach-avoid'),
+    ('PendulumHard', 'Pendulum-G', 'reach-avoid'),
     ('Dubins2D_scLTL', 'Dubins2D', 'scLTL'),
     ('Dubins3D', 'Dubins3D', 'reach-avoid'),
     ('Dubins3D_scLTL', 'Dubins3D', 'scLTL'),
@@ -41,15 +47,33 @@ NUM_SAMPLES = (1000, 10000, 100000)  # one column group per number of samples
 
 MISSING = '--'
 
-# The empty 4th cell of the top row is a \multicolumn so that, like the column groups, the top row has no
-# vertical line
-HEADER = r'''\begin{tabular}{llrr | rrrr | rrrr | rrrr}
-\toprule
-& & & \multicolumn{1}{r}{} & \multicolumn{4}{c}{1\,000 samples} & \multicolumn{4}{c}{10\,000 samples} & \multicolumn{4}{c}{100\,000 samples} \\
-\cmidrule(lr){5-8} \cmidrule(lr){9-12} \cmidrule(lr){13-16}
-\textbf{Benchmark} & \textbf{Method} & $|S|$ & $|A|$ & \#Trans. & Abs.\ [s] & Syn.\ [s] & $\lambda$ & \#Trans. & Abs.\ [s] & Syn.\ [s] & $\lambda$ & \#Trans. & Abs.\ [s] & Syn.\ [s] & $\lambda$ \\
-\midrule
-'''
+# Columns per sample-size group; the extended table adds the empirical satisfaction probability after lambda
+GROUP_COLUMNS = (r'\#Trans.', r'Abs.\ [s]', r'Syn.\ [s]', r'$\lambda$')
+EXTENDED_GROUP_COLUMNS = GROUP_COLUMNS + ('Emp.',)
+
+
+def make_header(group_columns):
+    r'''
+    Table header, with one column group per number of samples.
+
+    :param group_columns: Column titles within each group.
+    :return: The LaTeX code from \begin{tabular} up to and including the \midrule below the column titles.
+    '''
+
+    width = len(group_columns)
+    spec = 'llrr' + ''.join(' | ' + 'r' * width for _ in NUM_SAMPLES)
+    groups = ' & '.join(f'\\multicolumn{{{width}}}{{c}}{{{fmt_int(n)[1:-1]} samples}}' for n in NUM_SAMPLES)
+    rules = ' '.join(f'\\cmidrule(lr){{{5 + i * width}-{4 + (i + 1) * width}}}' for i in range(len(NUM_SAMPLES)))
+    titles = ' & '.join(group_columns * len(NUM_SAMPLES))
+    # The empty 4th cell of the top row is a \multicolumn so that, like the column groups, the top row has no
+    # vertical line
+    return (f'\\begin{{tabular}}{{{spec}}}\n\\toprule\n'
+            f'& & & \\multicolumn{{1}}{{r}}{{}} & {groups} \\\\\n'
+            f'{rules}\n'
+            f'\\textbf{{Benchmark}} & \\textbf{{Method}} & $|S|$ & $|A|$ & {titles} \\\\\n'
+            '\\midrule\n')
+
+
 FOOTER = '\\bottomrule\n\\end{tabular}%\n'
 
 NUM_ACTIONS_PATTERN = re.compile(r'\(Number of actions: (\d+)\)')
@@ -129,6 +153,13 @@ def fmt_lower_bound(value):
     return f'${Decimal(value).quantize(Decimal("0.001"), rounding=ROUND_FLOOR)}$'
 
 
+def fmt_probability(value):
+    '''Probability with three decimals, e.g. $0.994$.'''
+    if is_missing(value):
+        return MISSING
+    return f'${float(value):.3f}$'
+
+
 def shared_value(runs, metric, description):
     '''
     Value of a metric that must be the same for all given runs (e.g., the number of states).
@@ -145,13 +176,14 @@ def shared_value(runs, metric, description):
     return values.pop() if values else None
 
 
-def make_row(runs, model, method):
+def make_row(runs, model, method, extended=False):
     '''
     Table row of one method on one benchmark.
 
     :param runs: All run summaries, as returned by load_runs.
     :param model: Model name in summary.csv.
     :param method: Abstraction (IMDP or 2IMDP).
+    :param extended: If True, add the empirical satisfaction probability after the lower bound.
     :return: The LaTeX row, without the benchmark column.
     '''
 
@@ -164,8 +196,9 @@ def make_row(runs, model, method):
     ]
     for n, run in zip(NUM_SAMPLES, method_runs):
         if run is None:
-            print(f'Warning: no run found for {description} with {n} samples')
-            cells += [MISSING] * 4
+            if not extended:  # warn only once, for the regular table
+                print(f'Warning: no run found for {description} with {n} samples')
+            cells += [MISSING] * (len(EXTENDED_GROUP_COLUMNS) if extended else len(GROUP_COLUMNS))
             continue
         cells += [
             fmt_sci(run['num_intervals']),
@@ -173,31 +206,36 @@ def make_row(runs, model, method):
             fmt_time(run['time_synthesis']),
             fmt_lower_bound(run['lower_bound']),
         ]
+        if extended:
+            cells.append(fmt_probability(run.get('empirical_satprob')))
     return ' & ' + ' & '.join(cells) + ' \\\\\n'
 
 
-def make_table(runs):
+def make_table(runs, extended=False):
     '''
     Generate the full LaTeX table.
 
     :param runs: All run summaries, as returned by load_runs.
+    :param extended: If True, add the empirical satisfaction probability after each lower bound.
     :return: The LaTeX code of the table.
     '''
 
     blocks = []
     for model, name, specification in BENCHMARKS:
         block = (f'\\multirow{{{len(METHODS)}}}{{*}}{{\\begin{{tabular}}{{@{{}}l@{{}}}}\\textbf{{{name}}}'
-                 f'\\\\{specification}\\end{{tabular}}}}\n')
-        block += ''.join(make_row(runs, model, method) for method in METHODS)
+                 f'\\\\\\textit{{({specification})}}\\end{{tabular}}}}\n')
+        block += ''.join(make_row(runs, model, method, extended) for method in METHODS)
         blocks.append(block)
-    return HEADER + '\\midrule\n'.join(blocks) + FOOTER
+    header = make_header(EXTENDED_GROUP_COLUMNS if extended else GROUP_COLUMNS)
+    return header + '\\midrule\n'.join(blocks) + FOOTER
 
 
 def main():
     parser = argparse.ArgumentParser(description='Generate the main results table of the paper.')
     parser.add_argument('folder', type=Path,
                         help='Folder with one MultiRun_* subfolder per benchmark (e.g., output_HSCC); '
-                             'the table is written to <folder>/table_main.tex')
+                             'the tables are written to <folder>/table_main.tex and '
+                             '<folder>/table_main_extended.tex')
     args = parser.parse_args()
 
     if not args.folder.is_dir():
@@ -210,9 +248,10 @@ def main():
     if unused:
         print(f'Note: runs of {", ".join(unused)} are not part of the table')
 
-    output = args.folder / 'table_main.tex'
-    output.write_text(make_table(runs), encoding='utf-8')
-    print(f'Table written to {output}')
+    for filename, extended in (('table_main.tex', False), ('table_main_extended.tex', True)):
+        output = args.folder / filename
+        output.write_text(make_table(runs, extended), encoding='utf-8')
+        print(f'Table written to {output}')
 
 
 if __name__ == '__main__':
