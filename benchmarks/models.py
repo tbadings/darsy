@@ -613,34 +613,3 @@ class Temperature3DDynamics:
     def step(self, state, action, noise):
         return ((1.0 + noise) * (jnp.asarray(self.A) @ state)
                 + jnp.asarray(self.B) @ action + jnp.asarray(self.b))
-
-class PackageDeliveryDynamics:
-    """Agent in the plane with linear dynamics and additive noise (ARCH-COMP22 package delivery)."""
-
-    def __init__(self, args):
-
-        self.n = 2
-        self.p = 2
-        self.state_variables = ['x', 'y']
-        self.wrap = jnp.array([False, False], dtype=bool)
-
-        # State transition matrix
-        self.A = np.diag([0.9, 0.8])
-
-        # Input matrix
-        self.B = np.diag([1.4, 1.4])
-
-        # Covariance of the process noise: the benchmark specifies w ~ N(0, 0.2 I)
-        if args.noise_distr == 'gaussian':
-            self.noise = GaussianDistr(np.array([0.2, 0.2])) # Already a variance
-        elif args.noise_distr == 'triangular':
-            self.noise = TriangularDistr(np.sqrt(6 * np.array([0.2, 0.2]))) # Halfwidth with the same variance (h^2/6)
-        else:
-            raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
-
-        self.lipschitz = np.abs(self.A)
-
-    def step(self, state, action, noise):
-        state_next = jnp.dot(self.A, state) + jnp.dot(self.B, action) + noise
-
-        return state_next

@@ -10,7 +10,6 @@ from .Temperature1D_safety import Temperature1D_safety
 from .Temperature4D import Temperature4D
 from .Temperature3D import Temperature3D
 from .Temperature2D import Temperature2D
-from .PackageDelivery import PackageDelivery
 
 
 def create_model(args):
@@ -31,7 +30,6 @@ def create_model(args):
         'Temperature2D': Temperature2D,
         'Temperature3D': Temperature3D,
         'Temperature4D': Temperature4D,
-        'PackageDelivery': PackageDelivery,
     }
 
     model_cls = model_map.get(args.model)
