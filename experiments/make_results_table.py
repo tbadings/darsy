@@ -46,7 +46,6 @@ BENCHMARKS = (
 )
 METHODS = ('IMDP', '2IMDP')
 NUM_SAMPLES = (1000, 10000, 100000)  # one column group per number of samples
-
 MISSING = '--'
 
 # Columns that are the same for all numbers of samples (after Benchmark and Method). The number of transitions
@@ -69,7 +68,6 @@ def make_header(group_columns):
     :param group_columns: Column titles within each group.
     :return: The LaTeX code from \begin{tabular} up to and including the \midrule below the column titles.
     '''
-
     width = len(group_columns)
     first = 3 + len(SHARED_COLUMNS)  # index of the first column of the first group
     spec = 'll' + 'r' * len(SHARED_COLUMNS) + ''.join(' | ' + 'r' * width for _ in NUM_SAMPLES)
@@ -87,7 +85,6 @@ def make_header(group_columns):
 
 
 FOOTER = '\\bottomrule\n\\end{tabular}%\n'
-
 NUM_ACTIONS_PATTERN = re.compile(r'\(Number of actions: (\d+)\)')
 
 
@@ -98,7 +95,6 @@ def read_num_actions(run_dir):
     :param run_dir: Folder of the run.
     :return: Number of actions, or None if no log reports it.
     '''
-
     for log_path in sorted(run_dir.glob('run_*.log')):
         match = NUM_ACTIONS_PATTERN.search(log_path.read_text(encoding='utf-8'))
         if match:
@@ -113,7 +109,6 @@ def load_runs(results_dir):
     :param results_dir: Folder with one MultiRun_* subfolder per benchmark.
     :return: Dict from (model, abstraction, num_samples) to the run summary (dict from metric to value).
     '''
-
     runs = {}
     for summary_path in sorted(results_dir.glob('*/*/summary.csv')):
         with summary_path.open(newline='', encoding='utf-8') as csv_file:
@@ -125,7 +120,6 @@ def load_runs(results_dir):
         summary['num_actions'] = (read_num_actions(summary_path.parent) if is_missing(num_actions)
                                   else int(num_actions))
         summary['run_dir'] = summary_path.parent
-
         key = (summary['model'], summary['abstraction'], int(summary['num_samples']))
         if key in runs:
             raise ValueError(f'Multiple runs for {key}:\n  {runs[key]["run_dir"]}\n  {summary_path.parent}')
@@ -140,7 +134,6 @@ def is_missing(value):
 def fmt_int(value):
     '''Integer with thin spaces as thousands separators, e.g. $250\\,501$.'''
     return MISSING if is_missing(value) else f'${int(value):,}$'.replace(',', r'\,')
-
 
 
 def fmt_sci(value):
@@ -181,7 +174,6 @@ def shared_value(runs, metric, description):
     :param description: Description of the runs, used in the error message.
     :return: The shared value, or None if no run reports it.
     '''
-
     values = {run[metric] for run in runs if run is not None and not is_missing(run[metric])}
     if len(values) > 1:
         raise ValueError(f'Inconsistent {metric} for {description}: {sorted(values)}')
@@ -198,7 +190,6 @@ def make_row(runs, model, method, extended=False):
     :param extended: If True, add the empirical satisfaction probability after the lower bound.
     :return: The cells of the row, without the benchmark column.
     '''
-
     method_runs = [runs.get((model, method, n)) for n in NUM_SAMPLES]
     description = f'{model} ({method})'
     cells = [
@@ -233,7 +224,6 @@ def highlight_best(rows, extended):
                  place.
     :param extended: Whether the rows are for the extended table.
     '''
-
     width = len(EXTENDED_GROUP_COLUMNS if extended else GROUP_COLUMNS)
     first = 1 + len(SHARED_COLUMNS)  # index of the first cell of the first group (cell 0 is the method)
     for group in range(len(NUM_SAMPLES)):
@@ -258,7 +248,6 @@ def make_table(runs, extended=False):
     :param extended: If True, add the empirical satisfaction probability after each lower bound.
     :return: The LaTeX code of the table.
     '''
-
     blocks = []
     for model, name, specification in BENCHMARKS:
         block = (f'\\multirow{{{len(METHODS)}}}{{*}}{{\\begin{{tabular}}{{@{{}}l@{{}}}}\\textbf{{{name}}}'

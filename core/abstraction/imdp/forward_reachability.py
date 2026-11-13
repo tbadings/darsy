@@ -33,7 +33,6 @@ def _make_forward_reach(step_fn, noise_sample_fn, num_samples, alpha, partition,
     boundary_lb = jnp.asarray(partition.boundary_lb)
     boundary_ub = jnp.asarray(partition.boundary_ub)
     edges = partition.edges_padded
-
     pct_lo = 100 * alpha / 2        # lower percentile of the samples
     pct_hi = 100 * (1 - alpha / 2)  # upper percentile of the samples
     period = boundary_ub - boundary_lb
@@ -104,21 +103,16 @@ class RectangularForward:
     def __init__(self, args, partition, model, coarse_factor):
         logger.info('=== Start forward reachability computations ===')
         t_start = time.time()
-
         self.coarse_factor = int(coarse_factor)
-
         lipschitz = jnp.asarray(np.atleast_2d(model.lipschitz), dtype=args.floatprecision)
         batch_frs = _make_forward_reach(model.step, model.noise.sample_jax,
                                         args.frs_num_samples, args.alpha, partition, lipschitz)
-
         num_cells = len(partition.regions['lower_bounds'])
         all_actions = partition.regions['actions']  # (1, num_actions, action_dim)
         num_actions = all_actions.shape[1]
         dim = partition.dimension
-
         self.frs_idx_lb = np.zeros((num_cells, num_actions, dim), dtype=np.int16)
         max_span = np.zeros(dim, dtype=int)
-
         rng = jax.random.PRNGKey(args.seed)
         starts, ends = create_batches(num_cells, args.frs_batch_size)
 
@@ -128,21 +122,18 @@ class RectangularForward:
             rngs = jax.random.split(batch_rng, batch_size * num_actions)
             rngs = rngs.reshape(batch_size, num_actions, 2)  # one key per (cell, action)
             action_batch = jnp.broadcast_to(all_actions, (batch_size, *all_actions.shape[1:]))
-
             idx_lb, span = batch_frs(
                 partition.regions['lower_bounds'][start:end],
                 partition.regions['upper_bounds'][start:end],
                 action_batch, rngs,
             )
             idx_lb, span = jax.device_get((idx_lb, span))
-
             self.frs_idx_lb[start:end] = idx_lb
             np.maximum(max_span, np.max(span, axis=(0, 1)), out=max_span)
 
         self.max_slice = tuple(max_span.tolist())
         self.max_slice_coarse = _max_blocks_per_dim(self.frs_idx_lb, self.max_slice, self.coarse_factor,
                                                     partition.number_per_dim, partition.wrap)
-
         logger.info(f'- Max state-slice to compute probability intervals over: {self.max_slice}')
         logger.info(f'- Max coarse block-slice (factor {self.coarse_factor}): {self.max_slice_coarse}')
         logger.info(f'Reachability computations took {time.time() - t_start:.3f} sec.')

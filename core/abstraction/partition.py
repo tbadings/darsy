@@ -9,7 +9,6 @@ import numpy as np
 from .polytope import hyperrectangles_iscontained_multi, hyperrectangles_isdisjoint_multi
 
 EPS = 1e-4
-
 logger = logging.getLogger(__name__)
 
 
@@ -22,7 +21,6 @@ def meshgrid_jax(points, size):
     :param size: Number of cells per dimension (list of ints).
     :return: Grid as 2D array.
     '''
-
     meshgrid = jnp.asarray(jnp.meshgrid(*points, indexing='ij'))
     grid = jnp.reshape(meshgrid, (len(size), -1)).T
 
@@ -143,7 +141,6 @@ def _compute_goal_regions(goal_regions, lower_bounds, upper_bounds, region_idxs,
         goal_regions_bools = jnp.full(size, False, dtype=bool)
         goal_regions_idxs = jnp.array([], dtype=int)
     logger.debug(f'- Goal regions defined (took {(time.time() - t):.3f} sec.)')
-
     goal = {
         'bools': goal_regions_bools,
         'idxs': goal_regions_idxs.tolist(),  # TODO: Set should be more efficient here
@@ -169,7 +166,6 @@ def _compute_critical_regions(critical_regions, lower_bounds, upper_bounds, regi
         critical_regions_bools = jnp.full(size, False, dtype=bool)
         critical_regions_idxs = jnp.array([], dtype=int)
     logger.debug(f'- Critical regions defined (took {(time.time() - t):.3f} sec.)')
-
     critical = {
         'bools': critical_regions_bools,
         'idxs': critical_regions_idxs.tolist(),  # TODO: Set should be more efficient here
@@ -181,11 +177,10 @@ def _compute_critical_regions(critical_regions, lower_bounds, upper_bounds, regi
 class DensePartition:
     """Full hyperrectangular grid with one shared discrete action set."""
 
-    def __init__(self, model, float_dtype, verbose=False):
+    def __init__(self, model, float_dtype):
         logger.info('Define dense partition...')
         t_total = time.time()
         self.float_dtype = float_dtype
-
         self.dimension = model.n
 
         # Retrieve necessary data from the model object
@@ -234,9 +229,7 @@ class DensePartition:
         upper_bounds = jnp.asarray(upper_np)
         centers_shifted = (lower_bounds + upper_bounds) / 2
         region_idxs = jnp.arange(len(centers_shifted))
-
         logger.debug(f'- Grid points defined (took {(time.time() - t):.3f} sec.)')
-
         self.regions = {
             'centers': jnp.array(centers_shifted, dtype=self.float_dtype),
             'idxs': region_idxs,
@@ -260,16 +253,13 @@ class DensePartition:
 
         # Sentinel state id used by JAX kernels for coordinates that are not present.
         self.missing_state = int(self.size)
-
         self.goal = _compute_goal_regions(
             model.goal, self.regions['lower_bounds'], self.regions['upper_bounds'], region_idxs, self.size
         )
         self.critical = _compute_critical_regions(
             model.critical, self.regions['lower_bounds'], self.regions['upper_bounds'], region_idxs, self.size
         )
-
         logger.debug(f'Partitioning took {(time.time() - t_total):.3f} sec.')
-
         logger.info(f"(Number of states: {len(self.regions['idxs'])})")
         logger.info(f"(Number of actions: {actions.shape[1]})")
 
@@ -330,7 +320,6 @@ class DensePartition:
 
     def grid_idx2state(self, grid_idx):
         '''Map a unit-cube grid index tuple to its (state ID, exists).'''
-        
         key = 0
         for value, num in zip(grid_idx, self.grid_shape):
             value = int(value)
@@ -373,13 +362,6 @@ class CoarsePartition:
         # parents: fine state id -> coarse cell id (blocks tile the grid, so every fine cell has one)
         fine_idx = np.asarray(partition.state_id2idx, dtype=np.int64)
         self.parents = ((fine_idx // self.factor) @ self.coarse_strides).astype(np.int32)
-
-        # children: coarse cell id -> fine state ids (ascending, possibly empty)
-        num_coarse = int(np.prod(self.coarse_shape))
-        order = np.argsort(self.parents, kind='stable').astype(np.int32)
-        splits = np.searchsorted(self.parents[order], np.arange(1, num_coarse))
-        self.children = np.split(order, splits)
-
         logger.info(
             f"- Coarse partition: {'x'.join(str(n) for n in self.coarse_shape)} blocks (factor {self.factor}) "
             f"over fine grid {'x'.join(str(n) for n in self.fine_shape)}"

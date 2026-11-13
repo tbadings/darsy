@@ -10,15 +10,11 @@ class MonteCarloSim():
     Class to run Monte Carlo simulations on the discrete-time stochastic system closed under a fixed Markov policy.
     '''
 
-    def __init__(self, model, partition, policy, policy_inputs, x0, iterations=100, sim_horizon=1000, random_initial_state=False, verbose=True, **kwargs):
-
+    def __init__(self, model, partition, policy, policy_inputs, x0, iterations=100, sim_horizon=1000, random_initial_state=False, verbose=True):
         logger.info('=== Start Monte Carlo simulations ===')
-
         self.verbose = verbose
-
         self.model = model
         self.partition = partition
-
         self.policy = policy
         self.policy_inputs = policy_inputs
         self.horizon = sim_horizon
@@ -27,7 +23,6 @@ class MonteCarloSim():
 
         # Predefine noise to speed up computations
         self.define_noise_values()
-
         self.results = {
             'satprob': -1,
             'goal_reached': np.full(self.iterations, False, dtype=bool),
@@ -44,7 +39,6 @@ class MonteCarloSim():
         '''
         Predefine the noise values to speed up computations.
         '''
-
         if hasattr(self.model.noise, 'sample'):
             self.noise = self.model.noise.sample(size=(self.iterations, self.horizon))
             return
@@ -64,7 +58,6 @@ class MonteCarloSim():
             - trace: Dictionary containing the state and input at each time step.
             - success: Boolean indicating whether goal was reached.
         '''
-
         # Initialize variables at start of iteration
         success = False
         trace = {'k': [], 'x': [], 'u': []}
@@ -83,7 +76,6 @@ class MonteCarloSim():
             x[0] = np.random.uniform(
                 low=self.partition.regions['lower_bounds'][s0],
                 high=self.partition.regions['upper_bounds'][s0])
-
         else:
             x[0] = x0
 
@@ -92,17 +84,14 @@ class MonteCarloSim():
         trace['x'] += [x[0]]
 
         ######
-
         # For each time step in the finite time horizon
         while k <= self.horizon:
-
             # Determine to which region the state belongs
             s[k], in_partition = self.partition.x2state(x[k])
 
             if in_partition:
                 # Save that state is currently in state s_current
                 x_tuple[k] = self.partition.state_id2idx[s[k]]
-
             else:
                 # Absorbing region reached
                 x_tuple[k] = -1
@@ -147,7 +136,6 @@ class MonteCarloSim():
             u[k] = self.policy_inputs[s[k]] if len(self.policy.shape) == 1 else self.policy_inputs[k, s[k]]
 
             ###
-
             # If loop was not aborted, we have a valid action
             if self.verbose:
                 logger.info(f'In state {s[k]} (x = {x[k]}), take action {a[k]} (u = {u[k]})')
@@ -164,7 +152,6 @@ class MonteCarloSim():
             k += 1
 
         ######
-
         return trace, success
 
 
@@ -194,18 +181,14 @@ class MonteCarloSim_scLTL(MonteCarloSim):
         sim_horizon=1000,
         random_initial_state=False,
         verbose=False,
-        **kwargs
     ):
-
         logger.info("=== Start sc-LTL Monte Carlo simulations ===")
 
         # --------------------------------------------------
         # Store model and simulation parameters
         # --------------------------------------------------
-
         self.model = model
         self.partition = partition
-
         self.verbose = verbose
         self.horizon = int(sim_horizon)
         self.iterations = int(iterations)
@@ -219,23 +202,17 @@ class MonteCarloSim_scLTL(MonteCarloSim):
         # --------------------------------------------------
         # Store DFA and policy
         # --------------------------------------------------
-
         self.dfa = dfa
-
         self.labels = np.asarray(labels, dtype=np.int64)
-
         self.policy = np.asarray(policy, dtype=np.int32)
-
         self.policy_inputs = np.asarray(
             policy_inputs,
             dtype=self.partition.float_dtype
         )
-
         self._accepting = np.asarray(
             dfa.accepting_states,
             dtype=bool
         )
-
         self._transitions = np.asarray(
             dfa.transitions,
             dtype=np.int32
@@ -244,7 +221,6 @@ class MonteCarloSim_scLTL(MonteCarloSim):
         # --------------------------------------------------
         # Validate policy dimensions
         # --------------------------------------------------
-
         if self.policy.ndim != 2:
             raise ValueError(
                 "sc-LTL policy must have shape "
@@ -269,7 +245,6 @@ class MonteCarloSim_scLTL(MonteCarloSim):
         # --------------------------------------------------
         # Validate control input dimensions
         # --------------------------------------------------
-
         expected_shape = (
             n_physical_states,
             n_dfa_states,
@@ -286,7 +261,6 @@ class MonteCarloSim_scLTL(MonteCarloSim):
         # --------------------------------------------------
         # Validate labels
         # --------------------------------------------------
-
         if self.labels.shape != (n_base_states,):
             raise ValueError(
                 "labels must contain one DFA bitmask per "
@@ -296,7 +270,6 @@ class MonteCarloSim_scLTL(MonteCarloSim):
         # --------------------------------------------------
         # Validate DFA
         # --------------------------------------------------
-
         if self._transitions.ndim != 2:
             raise ValueError(
                 "DFA transitions must be a 2D array"
@@ -326,13 +299,11 @@ class MonteCarloSim_scLTL(MonteCarloSim):
         # --------------------------------------------------
         # Generate noise samples
         # --------------------------------------------------
-
         self.define_noise_values()
 
         # --------------------------------------------------
         # Initialize simulation results
         # --------------------------------------------------
-
         self.results = {
             "satprob": 0.0,
             "satisfied": np.zeros(
@@ -349,20 +320,15 @@ class MonteCarloSim_scLTL(MonteCarloSim):
         # --------------------------------------------------
         # Run Monte Carlo simulations
         # --------------------------------------------------
-
         for m in tqdm(range(self.iterations)):
-
             trace, success = self._runIteration(x0, m)
-
             self.results["traces"][m] = trace
-
             self.results["satisfied"][m] = success
 
         # Compatibility with existing reporting functions
         self.results["goal_reached"] = (
             self.results["satisfied"].copy()
         )
-
         self.results["satprob"] = float(
             np.mean(self.results["satisfied"])
         )
@@ -380,15 +346,12 @@ class MonteCarloSim_scLTL(MonteCarloSim):
         success : bool
             True if the DFA reaches an accepting state.
         """
-
         x = np.asarray(x0, dtype=self.partition.float_dtype).copy()
 
         # --------------------------------------------------
         # Randomize initial continuous state if requested
         # --------------------------------------------------
-
         if self.random_initial_state:
-
             s0, exists = self.partition.x2state(x)
 
             if not exists:
@@ -408,7 +371,6 @@ class MonteCarloSim_scLTL(MonteCarloSim):
         # --------------------------------------------------
         # Initialize trace
         # --------------------------------------------------
-
         trace = {
             "k": [0],
             "x": [x.copy()],
@@ -419,32 +381,24 @@ class MonteCarloSim_scLTL(MonteCarloSim):
             "labels": [],
             "status": "horizon",
         }
-
         z = int(self.dfa.initial_state)
 
         # --------------------------------------------------
         # Simulate system
         # --------------------------------------------------
-
         for k in range(self.horizon + 1):
-
             # Identify current abstract state
             s, exists = self.partition.x2state(x)
 
             # ----------------------------------------------
             # Check absorbing state
             # ----------------------------------------------
-
             if not exists:
-
                 trace["s"].append(
                     int(self.partition.missing_state)
                 )
-
                 trace["z"].append(z)
-
                 trace["labels"].append(0)
-
                 trace["status"] = "outside_partition"
 
                 if self.verbose:
@@ -460,14 +414,12 @@ class MonteCarloSim_scLTL(MonteCarloSim):
             # ----------------------------------------------
             # Update DFA state
             # ----------------------------------------------
-
             z = int(
                 self._transitions[
                     z,
                     self.labels[s]
                 ]
             )
-
             trace["s"].append(s)
             trace["z"].append(z)
             trace["labels"].append(int(self.labels[s]))
@@ -475,9 +427,7 @@ class MonteCarloSim_scLTL(MonteCarloSim):
             # ----------------------------------------------
             # Check acceptance
             # ----------------------------------------------
-
             if self._accepting[z]:
-
                 trace["status"] = "accepted"
 
                 if self.verbose:
@@ -491,18 +441,15 @@ class MonteCarloSim_scLTL(MonteCarloSim):
             # ----------------------------------------------
             # Check simulation horizon
             # ----------------------------------------------
-
             if k == self.horizon:
                 return trace, False
 
             # ----------------------------------------------
             # Retrieve product policy
             # ----------------------------------------------
-
             a = int(self.policy[s, z])
 
             if a < 0:
-
                 trace["status"] = "no_action"
 
                 if self.verbose:
@@ -516,14 +463,12 @@ class MonteCarloSim_scLTL(MonteCarloSim):
             # The absorbing state is excluded from
             # policy_inputs, but we have already verified
             # that s belongs to the physical partition.
-
             u = np.asarray(
                 self.policy_inputs[s, z],
                 dtype=self.partition.float_dtype
             )
 
             if not np.all(np.isfinite(u)):
-
                 trace["status"] = "invalid_control"
 
                 return trace, False
@@ -540,7 +485,6 @@ class MonteCarloSim_scLTL(MonteCarloSim):
             # ----------------------------------------------
             # Simulate one stochastic transition
             # ----------------------------------------------
-
             x = np.asarray(
                 self.model.step(
                     x,
@@ -549,7 +493,6 @@ class MonteCarloSim_scLTL(MonteCarloSim):
                 ),
                 dtype=self.partition.float_dtype
             )
-
             trace["x"].append(x.copy())
             trace["k"].append(k + 1)
 

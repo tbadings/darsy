@@ -15,8 +15,6 @@ import jax.numpy as jnp
 # ============================================================================
 # IMDP: FINE INTERVALS ONLY
 # ============================================================================
-
-
 def expectation_imdp(values, data, maximize):
     """min (max) of p @ values subject to lb <= p <= ub and sum(p) = 1.
 
@@ -29,12 +27,10 @@ def expectation_imdp(values, data, maximize):
     """
     lb = jnp.broadcast_to(data['lb'], values.shape)
     ub = jnp.broadcast_to(data['ub'], values.shape)
-
     order = jnp.argsort(-values if maximize else values, axis=-1)
     lo = jnp.take_along_axis(lb, order, axis=-1)
     hi = jnp.take_along_axis(ub, order, axis=-1)
     vals = jnp.take_along_axis(values, order, axis=-1)
-
     budget = jnp.maximum(0.0, 1.0 - jnp.sum(lo, axis=-1, keepdims=True))
     capacity = jnp.maximum(0.0, hi - lo)
     preceding = jnp.cumsum(capacity, axis=-1) - capacity  # capacity of all successors handled earlier
@@ -45,8 +41,6 @@ def expectation_imdp(values, data, maximize):
 # ============================================================================
 # 2IMDP: FINE INTERVALS AND COARSE BLOCK CONSTRAINTS
 # ============================================================================
-
-
 def _expectation_2imdp_pair(values, lb, ub, mask, block, block_lb, block_ub, block_mask, maximize):
     """Robust expectation for one state-action pair of a 2IMDP.
 
@@ -64,7 +58,6 @@ def _expectation_2imdp_pair(values, lb, ub, mask, block, block_lb, block_ub, blo
     :param block_mask: Blocks that exist, shape (Q,).
     """
     num_successors, num_blocks = values.shape[0], block_lb.shape[0]
-
     key = jnp.where(mask, -values if maximize else values, jnp.inf)  # handle the smallest key first
     in_block = mask & (block >= 0) & block_mask[jnp.maximum(block, 0)]
     safe_block = jnp.where(in_block, block, 0)

@@ -1,5 +1,4 @@
 from benchmarks.models import Temperature4DDynamics
-import jax.numpy as jnp
 import numpy as np
 
 
@@ -8,47 +7,35 @@ class Temperature4D(Temperature4DDynamics):
 
     def __init__(self, args):
         Temperature4DDynamics.__init__(self, args)
-
         self.plot_dimensions = [0,1]
-
         self.set_spec()
 
     def set_spec(self):
         """Configure actions, partition, labeled regions, and specification."""
-        
         self.partition = {}
-        self.targets = {}
 
         # Four independent on/off heaters: 2**4 = 16 possible actions.
-
         self.uMin = np.zeros(4)
         self.uMax = np.ones(4)
         self.num_actions = np.full(4, 2, dtype=int)
 
         # State-space bounds and the safety region coincide.
         # In this benchmark, this is also the safe set
-
         boundary = [[18.5,18.5,18.5,18.5], [23.5,23.5,23.5,23.5]]
-
         self.partition['boundary'] = np.array(boundary)
-        self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
         self.safe_set = np.array([boundary], dtype=float)
 
         # Nominal partition resolution along each state dimension.
         self.partition['number_per_dim'] = np.array([12,12,12,12])
-                
+
         # --------------------------------------------------
         # Regions of interest
         # --------------------------------------------------
-
         # Each region is a union of boxes with shape (N, 2, state_dim).
         self.regions = {
                     "r_goal": np.empty((0, 2, 4), dtype=float),
-
                     "r_unsafe": np.empty((0, 2, 4), dtype=float),
-                    
                     "r_safe": self.safe_set
-                            
                 }
 
         # Expose goal/unsafe geometry for the reach-avoid solver interface.
@@ -58,7 +45,6 @@ class Temperature4D(Temperature4DDynamics):
         # --------------------------------------------------
         # Atomic propositions
         # --------------------------------------------------
-
         self.atomic_propositions = [
             "goal",
             "unsafe",
@@ -68,7 +54,6 @@ class Temperature4D(Temperature4DDynamics):
         # --------------------------------------------------
         # Labeling function L: R -> 2^AP
         # --------------------------------------------------
-
         # Assign atomic propositions to each named region of interest.
         self.labels = {
             "r_goal": {"goal"},
@@ -79,15 +64,12 @@ class Temperature4D(Temperature4DDynamics):
         # --------------------------------------------------
         # Safety specification
         # --------------------------------------------------
-
         self.specification = "G(safe)"
         self.horizon = 15
 
         # --------------------------------------------------
         # Initial condition
         # --------------------------------------------------
-
-
         self.x0 = np.array([21.0,21.0,21.0,21.0])
 
     def labeling_function(self, r):

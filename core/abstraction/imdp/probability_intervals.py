@@ -25,7 +25,6 @@ def compute_cp_table(num_samples: int, beta: float, float_dtype) -> tuple[np.nda
     k = np.arange(num_samples + 1)
     cp_lb = np.zeros(num_samples + 1, dtype=float_dtype)  # count 0 -> lower bound 0
     cp_ub = np.ones(num_samples + 1, dtype=float_dtype)   # count N -> upper bound 1
-
     cp_lb[1:] = scipy.stats.beta.ppf(beta / 2.0, k[1:], num_samples - k[1:] + 1)          # lower quantile
     cp_ub[:-1] = scipy.stats.beta.ppf(1.0 - beta / 2.0, k[:-1] + 1, num_samples - k[:-1])  # upper quantile
 
@@ -130,8 +129,7 @@ def _window_counts(lo, hi, a, b, origin, window_shape, grid_shape, wrap):
     window = tuple(int(w) for w in window_shape)
     grid = jnp.asarray(grid_shape, dtype=jnp.int32)
     lo, hi, a, b, origin = (jnp.asarray(v, dtype=jnp.int32) for v in (lo, hi, a, b, origin))
-    num, dim = lo.shape
-
+    dim = lo.shape[1]
     inside, overlap = [], []
     for k in range(dim):
         cells = origin[k] + jnp.arange(window[k], dtype=jnp.int32)  # grid cell of each window position
@@ -161,7 +159,6 @@ def _make_counts_kernel(step_fn, noise_sample_fn, num_samples, partition, lipsch
     boundary_ub = jnp.asarray(partition.boundary_ub)
     wrap = partition.wrap
     period = boundary_ub - boundary_lb
-
     offsets = jnp.asarray(_window_offsets(max_slice))
     strides = jnp.asarray(_compute_linear_strides(partition.number_per_dim))
     # slice covers the whole circle so nothing can leave
@@ -226,10 +223,8 @@ def _make_counts_kernel(step_fn, noise_sample_fn, num_samples, partition, lipsch
         # sink: inflated box out of the FRS
         slice_lb = edge(idx_lb)
         slice_ub = edge(idx_lb + jnp.asarray(max_slice))
-
         slice_center = (slice_lb + slice_ub) / 2
         slice_half_width = (slice_ub - slice_lb) / 2
-
         slice_dist = jnp.abs(wrap_diff(next_states - slice_center, period, wrap))
         leaves_dim = (slice_dist + inflation > slice_half_width) & ~whole_circle
         leaves = jnp.sum(jnp.any(leaves_dim, axis=-1)).astype(jnp.int32)

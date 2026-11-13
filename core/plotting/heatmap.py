@@ -7,8 +7,8 @@ from pathlib import Path
 from core.plotting.utils import PNG_DPI
 
 
-def heatmap(args, stamp, idx_show, slice_values=None, partition=None,
-            results=None, filename='heatmap', overlay=None, **kwargs):
+def heatmap(args, stamp, idx_show, partition=None,
+            results=None, filename='heatmap', overlay=None):
     """Plot a partition heatmap, optionally overlaying physical-coordinate geometry.
 
     `overlay(ax)` is called before saving. The callback can use
@@ -20,7 +20,6 @@ def heatmap(args, stamp, idx_show, slice_values=None, partition=None,
         'font.size': 12, 'axes.titlesize': 14, 'axes.labelsize': 12,
         'xtick.labelsize': 10, 'ytick.labelsize': 10,
     })
-
     idx = np.atleast_1d(np.asarray(idx_show, dtype=int))
     if idx.size == 1:
         i1, i2 = int(idx[0]), None

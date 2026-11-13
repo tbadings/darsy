@@ -31,7 +31,6 @@ def create_model(args):
         'Temperature3D': Temperature3D,
         'Temperature4D': Temperature4D,
     }
-
     model_cls = model_map.get(args.model)
     if model_cls is None:
         raise ValueError(f"The passed model '{args.model}' could not be found")

@@ -12,7 +12,6 @@ import copy
 import csv
 import datetime
 import logging
-import os
 import pickle
 import random
 import re
@@ -20,7 +19,6 @@ import subprocess
 import time
 from pathlib import Path
 
-import jax
 import numpy as np
 
 import benchmarks
@@ -43,19 +41,13 @@ def configure_run(args):
     '''
     Configure logging, JAX, and the random seeds for this run.
 
-    :param args: Argument namespace, extended in place with the JAX key and the run paths.
+    :param args: Argument namespace, extended in place with the run paths.
     :return: Timestamp string identifying the run.
     '''
-
     configure_logging(args.log_level)
     configure_jax(args)
-
     random.seed(args.seed)
     np.random.seed(args.seed)
-    args.jax_key = jax.random.PRNGKey(args.seed)
-
-    # Set current working directory
-    args.cwd = os.fspath(ROOT_DIR)
     args.root_dir = ROOT_DIR
 
     # Key results of the run, exported to summary.csv by write_summary
@@ -71,12 +63,11 @@ def record_synthesis(args, start, lower, upper):
     :param args: Argument namespace.
     :param start: Time at which the synthesis started.
     :param lower: Lower bound on the satisfaction probability in the initial state.
-    :param upper: Upper bound on the satisfaction probability in the initial state (None if unknown).
+    :param upper: Upper bound on the satisfaction probability in the initial state.
     '''
-
     args.summary['time_synthesis'] = time.time() - start
     args.summary['lower_bound'] = float(lower)
-    args.summary['upper_bound'] = None if upper is None else float(upper)
+    args.summary['upper_bound'] = float(upper)
     logger.info('<<< Synthesis took %.3f sec. >>>\n', args.summary['time_synthesis'])
 
 
@@ -87,13 +78,12 @@ def write_summary(args, model):
     :param args: Argument namespace.
     :param model: Benchmark model.
     '''
-
     rows = {
         'model': args.model,
         'abstraction': args.summary.get('abstraction'),
         'specification': getattr(model, 'specification', None),
         'noise': model.noise['type'],  # the model's own noise, which need not follow --noise_distr
-        'solver': args.solver,
+        'solver': 'jax',
         'horizon': 'none' if args.horizon is None else args.horizon,
         'checkpoint': args.load_checkpoint,
     }
@@ -112,7 +102,6 @@ def write_summary(args, model):
 
 def _abstraction_settings(args):
     '''Values of ABSTRACTION_SETTINGS in an argument namespace (None if absent, e.g. in an older checkpoint).'''
-
     return {key: getattr(args, key, None) for key in ABSTRACTION_SETTINGS}
 
 
@@ -124,7 +113,6 @@ def _open_output_dir(args, stamp):
     :param stamp: Run timestamp.
     :return: Path of the created directory.
     '''
-
     run_output_dir = args.root_dir / args.output_root / f"{stamp}_{args.summary['abstraction']}_{args.model}"
     run_output_dir.mkdir(parents=True, exist_ok=True)
     args.output_dir = run_output_dir
@@ -143,11 +131,9 @@ def save_checkpoint(args, key, model, partition, abstraction):
     :param partition: Partition of the continuous state space.
     :param abstraction: Abstraction object to store.
     '''
-
     # Strip JAX runtime objects that can't be pickled
     args_to_save = copy.copy(args)
     del args_to_save.rvi_device
-    del args_to_save.jax_key
 
     ckpt_path = args.output_dir / 'checkpoint.pkl'
     logger.info('Saving checkpoint to %s', ckpt_path)
@@ -201,7 +187,6 @@ def is_reach_avoid(formula):
 
     allowing whitespace and optional parentheses
     """
-
     # Remove whitespace
     formula = re.sub(r"\s+", "", formula)
 
@@ -218,7 +203,6 @@ def is_reach_avoid(formula):
 
 def is_scLTL(formula):
     # Check whether the specification is co-safe
-
     check_result = subprocess.run(
         [
             "ltlfilt",
@@ -245,7 +229,6 @@ def prepare_abstraction(args, stamp, name, build):
         abstraction is generated from scratch.
     :return: Tuple of (model, partition, abstraction).
     '''
-
     key = name.lower()
     args.summary['abstraction'] = name
 
@@ -275,7 +258,6 @@ def prepare_abstraction(args, stamp, name, build):
         # Name the output folder after the checkpointed model rather than --model, which is
         # typically left unset when a checkpoint is replayed.
         args.model = ckpt['args'].model
-
         run_output_dir = _open_output_dir(args, stamp)
         logger.info('Run %s | model=%s (from checkpoint)', stamp, args.model)
         logger.info('Output directory: %s', run_output_dir)
@@ -288,14 +270,11 @@ def prepare_abstraction(args, stamp, name, build):
     logger.info('Run %s | model=%s | noise=%s | batch=%d | frs_batch=%d',
                 stamp, args.model, args.noise_distr, args.batch_size, args.frs_batch_size)
     logger.info('Output directory: %s', run_output_dir)
-
     logger.info('\n=== Generate %s from scratch ===', name)
     logger.debug('Arguments: %s', vars(args))
-
     t = time.time()
     model = benchmarks.create_model(args)
     logger.info('<<< Generating model took %.3f sec. >>>\n', time.time() - t)
-
     formula = getattr(model, 'specification', None)
     if formula is None:
         raise ValueError('The benchmark does not define a specification.')
@@ -315,12 +294,10 @@ def prepare_abstraction(args, stamp, name, build):
     elif not is_scLTL(formula):
         raise ValueError('Specification must be reach-avoid, scLTL, or G(safe).')
     set_horizon(args, model)
-
     t = time.time()
 
     # Create partition of the continuous state space into convex polytope
     partition = DensePartition(model=model, float_dtype=args.floatprecision)
-
     s_init, s_init_exists = partition.x2state(model.x0)
     if not s_init_exists:
         raise ValueError(f"Initial state x0={model.x0} is not in the partition.")
@@ -328,7 +305,6 @@ def prepare_abstraction(args, stamp, name, build):
     # The callback holds the only reference to its intermediate action data, which is freed
     # when it returns (this matters: on the larger benchmarks it dominates peak memory).
     abstraction = build(args, model, partition, s_init)
-
     logger.info('Initial state x0=%s → state index %d\n', model.x0, s_init)
     args.summary.update(_abstraction_settings(args))
     args.summary['time_abstraction'] = time.time() - t
@@ -388,16 +364,12 @@ def extract_policy_inputs(args, partition, policy, nr_states, *, time_indexed=Fa
 
         States without an enabled action contain NaN.
     """
-
     if time_indexed:
         return np.stack([extract_policy_inputs(args, partition, p, nr_states) for p in policy])
 
     float_dtype = args.floatprecision
-
     policy = np.asarray(policy)
-
     actions_np = np.asarray(partition.regions["actions"])
-
     n_states = nr_states - 1
 
     # Broadcast the shared (1, n_actions, control_dim) action grid across states.
@@ -405,16 +377,13 @@ def extract_policy_inputs(args, partition, policy, nr_states, *, time_indexed=Fa
         actions_np,
         (n_states, *actions_np.shape[1:])
     )
-
     control_dim = actions_np.shape[2]
     n_actions = actions_np.shape[1]
 
     # --------------------------------------------------
     # Reach-avoid policy: sigma(s)
     # --------------------------------------------------
-
     if policy.ndim == 1:
-
         if policy.shape != (nr_states,):
             raise ValueError("Invalid reach-avoid policy shape")
 
@@ -423,14 +392,11 @@ def extract_policy_inputs(args, partition, policy, nr_states, *, time_indexed=Fa
             np.nan,
             dtype=float_dtype
         )
-
         valid = (
             (policy[:n_states] >= 0)
             & (policy[:n_states] < n_actions)
         )
-
         state_ids = np.flatnonzero(valid)
-
         policy_inputs[state_ids] = actions_np[
             state_ids,
             policy[state_ids]
@@ -439,32 +405,25 @@ def extract_policy_inputs(args, partition, policy, nr_states, *, time_indexed=Fa
     # --------------------------------------------------
     # sc-LTL policy: sigma(s,z)
     # --------------------------------------------------
-
     elif policy.ndim == 2:
-
         if policy.shape[0] != nr_states:
             raise ValueError("Invalid sc-LTL policy shape")
 
         n_dfa_states = policy.shape[1]
-
         policy_inputs = np.full(
             (n_states, n_dfa_states, control_dim),
             np.nan,
             dtype=float_dtype
         )
-
         valid = (
             (policy[:n_states] >= 0)
             & (policy[:n_states] < n_actions)
         )
-
         state_ids, dfa_ids = np.where(valid)
-
         policy_inputs[state_ids, dfa_ids] = actions_np[
             state_ids,
             policy[state_ids, dfa_ids]
         ]
-
     else:
         raise ValueError(
             "Policy must have shape (n_states,) "
@@ -482,7 +441,6 @@ def _guard(description, failures, fn, *fn_args, **fn_kwargs):
     :param fn: Callable implementing the step.
     :return: Return value of the step, or None if it failed.
     '''
-
     try:
         return fn(*fn_args, **fn_kwargs)
     except Exception:
@@ -519,9 +477,8 @@ def report(args, stamp, model, partition, V, policy, policy_inputs, iterations=1
     :param sim_horizon: Number of simulated steps without a horizon; with a horizon H, exactly H.
     :return: List of descriptions of the steps that failed (empty if all succeeded).
     '''
-
     from core.plotting.heatmap import heatmap
-    from core.plotting.trajectories import plot_trajectories, plot_trajectories_3d
+    from core.plotting.trajectories import plot_trajectories
     from core.validate.simulate import MonteCarloSim
 
     failures = []
@@ -540,11 +497,9 @@ def report(args, stamp, model, partition, V, policy, policy_inputs, iterations=1
         logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
         args.summary['empirical_satprob'] = float(sim.results['satprob'])
     _guard('run summary', failures, write_summary, args, model)
-
     _guard('satisfaction probability heatmap', failures, heatmap,
            args, stamp, idx_show=model.plot_dimensions,
            partition=partition, results=V, filename='satprob')
-
     _guard('policy heatmap', failures, heatmap,
            args, stamp, idx_show=model.plot_dimensions,
            partition=partition, results=policy_inputs[:, 0], filename='policy')
@@ -555,18 +510,9 @@ def report(args, stamp, model, partition, V, policy, policy_inputs, iterations=1
         return failures
 
     traces = sim.results['traces']
-
     _guard('trajectory plot', failures, plot_trajectories,
            args, stamp, model.plot_dimensions, partition, model, traces,
            num_trajectories=num_traces, add_unsafe_box=False)
-
-    # Models that are natural to show in 3D (e.g. the 6D drone) declare the three dimensions to use.
-    dims_3d = getattr(model, 'plot_dimensions_3d', None)
-    if dims_3d is not None:
-        logger.info('Plotting trajectories in 3D (dimensions %s)...', list(dims_3d))
-        _guard('3D trajectory plot', failures, plot_trajectories_3d,
-               args, stamp, dims_3d, partition, model, traces,
-               num_trajectories=num_traces, filename='trajectories_3d')
 
     # Models that can animate a trajectory declare which state dimensions the animation needs.
     gif_dims = list(getattr(model, 'gif_dimensions', []) or [])
@@ -590,28 +536,8 @@ def finish(args):
 
     :param args: Argument namespace.
     '''
-
     logger.info('\n=== Run finished. Output directory: %s ===', args.output_dir)
     logger.info('====================\n')
-
-
-def extract_product_policy_inputs(args, partition, policy, nr_states):
-    """Map global action indices policy[s,z] to physical inputs u[s,z,:]."""
-    policy = np.asarray(policy, dtype=np.int32)
-    if policy.ndim != 2 or policy.shape[0] != nr_states:
-        raise ValueError('Expected policy shape (nr_states, n_dfa_states)')
-    actions = np.asarray(partition.regions['actions'])
-    if actions.shape[0] == 1:
-        actions = np.broadcast_to(actions, (nr_states - 1, *actions.shape[1:]))
-    if actions.shape[0] != nr_states - 1:
-        raise ValueError('Partition action count does not match physical states')
-    result = np.full((*policy.shape, actions.shape[-1]), np.nan, dtype=args.floatprecision)
-    valid = policy[:-1] >= 0
-    ss, zz = np.nonzero(valid)
-    if np.any(policy[ss, zz] >= actions.shape[1]):
-        raise ValueError('Policy references an action outside the partition action grid')
-    result[ss, zz] = actions[ss, policy[ss, zz]]
-    return result
 
 
 def draw_regions_of_interest(ax, model, dimensions=None):
@@ -647,7 +573,7 @@ def report_scLTL(args, stamp, model, partition, V_lower, policy, dfa, labels,
     They are not plots of the full product-state policy.
     """
     from core.plotting.heatmap import heatmap
-    from core.plotting.trajectories import plot_trajectories, plot_trajectories_3d
+    from core.plotting.trajectories import plot_trajectories
     from core.validate.simulate import MonteCarloSim_scLTL
 
     failures = []
@@ -656,7 +582,6 @@ def report_scLTL(args, stamp, model, partition, V_lower, policy, dfa, labels,
     physical_s = np.arange(partition.size)
     V_initial = np.asarray(V_lower)[physical_s, initial_z]
     inputs_initial = np.asarray(policy_inputs)[physical_s, initial_z]
-
     sim = _guard('sc-LTL Monte Carlo simulation', failures, MonteCarloSim_scLTL,
                  model, partition, policy, policy_inputs, model.x0, dfa, labels,
                  iterations=iterations, sim_horizon=sim_horizon, verbose=False)
@@ -667,7 +592,6 @@ def report_scLTL(args, stamp, model, partition, V_lower, policy, dfa, labels,
                             satprob=sim.results['satprob'])
         args.summary['empirical_satprob'] = float(sim.results['satprob'])
     _guard('run summary', failures, write_summary, args, model)
-
     _guard('sc-LTL initial-state satisfaction heatmap', failures, heatmap,
            args, stamp, idx_show=model.plot_dimensions,
            partition=partition, results=V_initial, filename='scLTL_satprob_initial',
@@ -682,12 +606,6 @@ def report_scLTL(args, stamp, model, partition, V_lower, policy, dfa, labels,
                args, stamp, model.plot_dimensions, partition, model, traces,
                num_trajectories=num_traces, add_unsafe_box=False,
                labeled_regions=True)
-        dims_3d = getattr(model, 'plot_dimensions_3d', None)
-        if dims_3d is not None:
-            _guard('sc-LTL 3D trajectory plot', failures, plot_trajectories_3d,
-                   args, stamp, dims_3d, partition, model, traces,
-                   num_trajectories=num_traces, filename='scLTL_trajectories_3d',
-                   labeled_regions=True)
     return failures
 
 def _is_horizon(horizon):
@@ -804,7 +722,6 @@ def report_safety(args, stamp, model, partition, V_lower, V_upper, policy,
     ax.set_ylabel('Monte Carlo runs')
     ax.set_title(f'Safety over {H} transitions: {probability:.3f}')
     save_figure(fig, 'safety_mc_outcomes')
-
     dims = np.atleast_1d(np.asarray(model.plot_dimensions, dtype=int))
     if len(dims) in (1, 2) and traces:
         fig, ax = plt.subplots()

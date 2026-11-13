@@ -1,5 +1,4 @@
 from benchmarks.models import Temperature1DDynamics
-import jax.numpy as jnp
 import numpy as np
 
 
@@ -10,37 +9,29 @@ class Temperature1D_safety(Temperature1DDynamics):
 
     def __init__(self, args):
         Temperature1DDynamics.__init__(self, args)
-
         self.plot_dimensions = [0]
-
         self.set_spec()
 
     def set_spec(self):
         '''
         Set the abstraction parameters and the reach-avoid specification.
         '''
-        
         self.partition = {}
-        self.targets = {}
 
         # Authority limit for the control u, both positive and negative
         self.uMin = [0]
         self.uMax = [1]
         self.num_actions = [2]
-
         self.partition['boundary'] = np.array([[19], [22]])
-        self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
         self.partition['number_per_dim'] = np.array([100])
 
         # --------------------------------------------------
         # Regions of interest
         # --------------------------------------------------
-
         self.regions = {
                     "r_goal": np.array([
                     [[20.25], [20.75]]
                     ], dtype=float),
-
                     "r_unsafe": np.array([
                     ], dtype=float)
                 }
@@ -52,7 +43,6 @@ class Temperature1D_safety(Temperature1DDynamics):
         # --------------------------------------------------
         # Atomic propositions
         # --------------------------------------------------
-
         self.atomic_propositions = [
             "goal",
             "unsafe"
@@ -61,7 +51,6 @@ class Temperature1D_safety(Temperature1DDynamics):
         # --------------------------------------------------
         # Labeling function L: R -> 2^AP
         # --------------------------------------------------
-
         self.labels = {
             "r_goal": {"goal"},
             "r_unsafe": {"unsafe"}
@@ -70,7 +59,6 @@ class Temperature1D_safety(Temperature1DDynamics):
         # --------------------------------------------------
         # sc-LTL specification
         # --------------------------------------------------
-
         self.specification = "G(safe)"
         self.horizon = 20
         self.safe_set = np.array([[[19.0], [22.0]]], dtype=float)
@@ -78,12 +66,9 @@ class Temperature1D_safety(Temperature1DDynamics):
         self.atomic_propositions.append('safe')
         self.labels['r_safe'] = {'safe'}
         # self.specification = ("(!unsafe) U goal")
-
         # --------------------------------------------------
         # Initial condition
         # --------------------------------------------------
-
-
         self.x0 = np.array([19.5])
 
     def labeling_function(self, r):
@@ -101,8 +86,7 @@ class Temperature1D_safety(Temperature1DDynamics):
                 set[str]
                     Atomic propositions true in region r.
                 """
-        
                 if r not in self.regions:
                     raise ValueError(f"Unknown region: {r}")
-        
+
                 return self.labels[r]

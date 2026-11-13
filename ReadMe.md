@@ -67,12 +67,6 @@ make
 sudo make install
 ```
 
-If you built Storm from source with its shipped copy of Spot, you can instead add the bundled binaries to your `PATH`:
-
-```bash
-export PATH="<storm_dir>/build/resources/3rdparty/spot/bin:$PATH"
-```
-
 Verify the installation with:
 
 ```bash
@@ -95,7 +89,7 @@ Both share the run pipeline in `core/pipeline.py` and the command-line options. 
 - finite-horizon safety, `G(safe)`, over the horizon set by the benchmark;
 - a general scLTL formula, solved on the product of the abstraction with the formula's DFA (requires Spot).
 
-`Run2IMDP.py` additionally builds a coarse layer controlled by `--coarse_factor`. Both entrypoints support robust value and policy iteration with `--solver jax` (the default). `--solver storm` applies only to `RunIMDP.py` with a reach-avoid specification.
+`Run2IMDP.py` additionally builds a coarse layer controlled by `--coarse_factor`. Both entrypoints use JAX robust value iteration for unbounded objectives and backward dynamic programming for finite horizons.
 
 Both entrypoints use a full `DensePartition` with grid edges aligned to labeled regions.
 `Run2IMDP.py` groups those fine cells into a `CoarsePartition` for its second layer.
@@ -128,9 +122,9 @@ adds noise only to the heading: triangular noise with halfwidth 0.05 by default,
 zero-mean Gaussian noise with standard deviation 0.05 with `--noise_distr gaussian`.
 
 ```bash
-python RunIMDP.py --model Dubins3D --solver jax
-python RunIMDP.py --model DoubleIntegrator --solver storm
-python Run2IMDP.py --model MountainCar --solver jax --no-policy_iteration
+python RunIMDP.py --model Dubins3D
+python RunIMDP.py --model DoubleIntegrator
+python Run2IMDP.py --model MountainCar
 ```
 
 # Running a benchmark
@@ -138,7 +132,7 @@ python Run2IMDP.py --model MountainCar --solver jax --no-policy_iteration
 A typical command looks as follows:
 
 ```bash
-python RunIMDP.py --model MountainCar --solver jax --noise_distr gaussian
+python RunIMDP.py --model MountainCar --noise_distr gaussian
 ```
 
 This will:
@@ -234,33 +228,18 @@ The runs reported in the paper, including their logs, `summary.csv` files, and p
 python experiments/make_results_table.py output_HSCC
 ```
 
-# Solver backends
+# Synthesis
 
-Two solver backends are supported:
-
-- `--solver jax`: robust dynamic programming (value or policy iteration) implemented in JAX; supports both entrypoints and all specifications.
-- `--solver storm`: robust value iteration through Storm (via `stormpy`); supports `RunIMDP.py` with reach-avoid specifications only.
-
-All experiments in the paper were run with the JAX backend (`--solver jax`, the default) on the CPU.
-
-Examples:
-
-```bash
-python RunIMDP.py --model Pendulum --solver jax
-python RunIMDP.py --model Test1D --solver storm --no-policy_iteration
-```
-
-Note: the Storm backend currently supports robust value iteration, not robust policy iteration. If `--solver storm` is selected together with policy iteration, the code emits a warning and falls back to robust value iteration.
+Both entrypoints use JAX. Unbounded reach-avoid and scLTL objectives use robust value iteration;
+finite-horizon reach-avoid and safety objectives use backward dynamic programming.
+The solver returns a policy, its worst-case satisfaction probability, and its best-case probability.
 
 # Important command-line options
 
-## Model and solver selection
+## Model selection
 
 - `--model`: benchmark name.
-- `--solver {jax,storm}`: select the backend.
 - `--noise_distr {gaussian,normal,triangular}`: select the noise model (default: `triangular`). `normal` is accepted as an alias of `gaussian`.
-- `--policy_iteration` or `--no-policy_iteration`: robust policy iteration (default) or value iteration.
-- `--satprob`: stop improving the policy once the value in the initial state reaches this bound, and only evaluate it to convergence. Policy iteration only.
 
 ## Data-driven abstraction
 
@@ -316,7 +295,6 @@ Depending on the benchmark and selected options, that directory may contain:
 - `safety_mc_outcomes_<timestamp>.{pdf,png}` and `safety_mc_trajectories_<timestamp>.{pdf,png}`: Monte Carlo outcomes and trajectories (safety).
 - `safety_synthesis.npz` and `safety_monte_carlo.npz`: values, policy, and Monte Carlo outcomes (safety).
 - `trajectories_<timestamp>.{pdf,png}`: simulated trajectories over the model's `plot_dimensions` (1D models are drawn against the time step).
-- `trajectories_3d_*.{pdf,png}`: 3D trajectories, for models defining `plot_dimensions_3d`.
 - `<model>_<timestamp>.gif`: a trajectory animation, for models defining `gif_dimensions` (`Pendulum`, `PendulumHard`, `MountainCar`).
 
 # Repository structure

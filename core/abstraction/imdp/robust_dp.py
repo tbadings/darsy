@@ -13,7 +13,6 @@ imdp.S_id, ...), so memory stays at the abstraction plus one chunk. When all chu
 max_resident_bytes, they are built once and kept on the device instead.
 """
 
-import itertools
 import logging
 from dataclasses import dataclass
 from functools import partial
@@ -31,8 +30,6 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # OBJECTIVES
 # ============================================================================
-
-
 @dataclass
 class Objective:
     """Values to compute on the product of the abstraction with an automaton.
@@ -130,9 +127,7 @@ def encode_imdp_labels(imdp, dfa):
 
     The absorbing state receives an empty label.
     """
-
     n = int(imdp.absorbing_state)
-
     aps = list(dfa.atomic_propositions)
 
     if len(set(aps)) != len(aps) or len(aps) > 62:
@@ -146,13 +141,11 @@ def encode_imdp_labels(imdp, dfa):
         )
 
     labels = np.zeros(n + 1, dtype=np.int64)
-
     ap_idx = {
         ap: i for i, ap in enumerate(aps)
     }
 
     for region, mask in imdp.states_of_interest.items():
-
         mask = np.asarray(mask, dtype=bool)
 
         if mask.shape != (n,):
@@ -161,7 +154,6 @@ def encode_imdp_labels(imdp, dfa):
             )
 
         propositions = set(imdp.region_labels[region])
-
         unknown = propositions - known
 
         if unknown:
@@ -174,7 +166,6 @@ def encode_imdp_labels(imdp, dfa):
             for ap in propositions
             if ap in ap_idx
         )
-
         labels[np.flatnonzero(mask)] |= bits
 
     return labels
@@ -190,8 +181,6 @@ def initial_product_state(s0, dfa, labels):
 # ============================================================================
 # CHUNKED BELLMAN OPERATOR
 # ============================================================================
-
-
 @partial(jax.jit, static_argnames=('expectation', 'maximize'))
 def _q_values(V, next_z, zs, data, expectation, maximize):
     """q[c, j, a]: worst (best) expected value of V for row (state c, automaton state zs[j]) and action a."""
@@ -368,8 +357,6 @@ class _Bellman:
 # ============================================================================
 # DYNAMIC PROGRAMMING
 # ============================================================================
-
-
 def _max_change(V, V_old):
     return float(jnp.max(jnp.abs(V - V_old)))
 
@@ -388,47 +375,6 @@ def _value_iteration(bellman, V, policy, *, keep_unless_better, epsilon, max_ite
             break
     else:
         logger.warning('Value iteration reached max_iter=%d', max_iter)
-    pbar.close()
-    return V, policy
-
-
-def _policy_iteration(bellman, V, policy, *, epsilon, max_iter, initial_row, satprob):
-    """Robust policy iteration with partial policy evaluation, for reach-type objectives.
-
-    Early iterations evaluate the policy only partially (at most 10 + 10 * iteration sweeps, capped
-    at 100); once improvements stall, each policy is evaluated until convergence. Improvement stops
-    as soon as the initial row reaches satprob.
-    """
-    pbar = tqdm(desc='Policy iteration', unit='it', dynamic_ncols=True)
-    fully_evaluated = False
-    for iteration in range(max_iter):
-        max_sweeps = None if fully_evaluated else min(10 + 10 * iteration, 100)
-        for sweep in itertools.count():
-            V_old = V
-            V = bellman.evaluate(V, policy, in_place=True, maximize=False, monotone=True)
-            error = _max_change(V, V_old)
-            if error < epsilon or (max_sweeps is not None and sweep >= max_sweeps):
-                break
-        pbar.update(1)
-        pbar.set_postfix(_progress(V, initial_row, error))
-
-        if initial_row is not None and float(V[initial_row]) >= satprob:
-            logger.info('Policy is above the satisfaction threshold %.2f after %d iterations',
-                        satprob, iteration + 1)
-            if not fully_evaluated:
-                fully_evaluated = True
-                continue  # evaluate this policy until convergence, then stop
-            break
-
-        V_old = V
-        V, policy = bellman.improve(V, policy, in_place=True, keep_unless_better=True)
-        if float(jnp.max(V - V_old)) < epsilon:
-            if fully_evaluated:
-                logger.info('Policy iteration converged after %d iterations', iteration + 1)
-                break
-            fully_evaluated = True
-    else:
-        logger.warning('Policy iteration reached max_iter=%d', max_iter)
     pbar.close()
     return V, policy
 
@@ -453,8 +399,8 @@ def _progress(V, initial_row, error):
     return postfix
 
 
-def robust_dp(imdp, objective, *, two_layer=False, horizon=None, policy_iteration=False,
-              initial_row=None, satprob=1.0, epsilon=1e-6, max_iter=10000, float_dtype=np.float64,
+def robust_dp(imdp, objective, *, two_layer=False, horizon=None,
+              initial_row=None, epsilon=1e-6, max_iter=10000, float_dtype=np.float64,
               chunk_entries=2 ** 22, max_resident_bytes=2 ** 31):
     """Lower and upper bounds on the objective, and a policy that maximizes the lower bound.
 
@@ -463,9 +409,7 @@ def robust_dp(imdp, objective, *, two_layer=False, horizon=None, policy_iteratio
     :param imdp: IMDP (two_layer=False) or 2IMDP abstraction (two_layer=True).
     :param objective: Objective, see reach_avoid_objective, safety_objective, scLTL_objective.
     :param horizon: None to iterate until convergence (reach-type objectives only); H for exactly H steps.
-    :param policy_iteration: Use policy iteration (without a horizon).
-    :param initial_row: Product state (s0, z0), for progress output and satprob.
-    :param satprob: Stop improving the policy once the initial row reaches this value (policy iteration).
+    :param initial_row: Product state (s0, z0), for progress output.
     :param chunk_entries: Interval entries per chunk (states * automaton states * actions * successors).
     :param max_resident_bytes: Keep all chunks on the device if they fit in this many bytes.
     :return: lower, upper, policy (global action ids, -1 on rows that are not free). Without a
@@ -482,19 +426,11 @@ def robust_dp(imdp, objective, *, two_layer=False, horizon=None, policy_iteratio
     policy = jnp.zeros(objective.free.shape, dtype=jnp.int32)
     if initial_row is not None:
         initial_row = tuple(int(i) for i in initial_row)
-        if not objective.free[initial_row]:  # e.g. a goal state: its value is fixed, so satprob says nothing
-            satprob = np.inf
 
     if horizon is None:
         # Infinite horizon: iterate until convergence, then evaluate the upper bound of the final policy
-        if policy_iteration:
-            # Policy iteration
-            lower, policy = _policy_iteration(bellman, lower, policy, epsilon=epsilon, max_iter=max_iter,
-                                              initial_row=initial_row, satprob=satprob)
-        else:
-            # Value iteration
-            lower, policy = _value_iteration(bellman, lower, policy, keep_unless_better=True,
-                                             epsilon=epsilon, max_iter=max_iter, initial_row=initial_row)
+        lower, policy = _value_iteration(bellman, lower, policy, keep_unless_better=True,
+                                         epsilon=epsilon, max_iter=max_iter, initial_row=initial_row)
         upper = _evaluate_upper(bellman, upper, policy, monotone=True,
                                 epsilon=epsilon, max_iter=max_iter)
         return np.asarray(lower), np.asarray(upper), bellman.global_actions(policy, objective.free)
@@ -516,8 +452,6 @@ def robust_dp(imdp, objective, *, two_layer=False, horizon=None, policy_iteratio
 # ============================================================================
 # SPECIFICATIONS
 # ============================================================================
-
-
 def solve_reach_avoid(imdp, *, two_layer=False, initial_state=None, **kwargs):
     """Reach-avoid synthesis: returns lower, upper, policy, each of shape (S+1,), or (H+1, S+1)
     with horizon H, where index h is the number of remaining steps."""

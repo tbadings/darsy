@@ -1,6 +1,6 @@
 """Build an IMDP and synthesize reach-avoid, safety, or scLTL policies.
 
-With --solver jax, all specifications are solved by the robust dynamic programming driver in
+All specifications are solved by the JAX robust dynamic programming driver in
 core/abstraction/imdp/robust_dp.py.
 """
 import logging
@@ -12,7 +12,6 @@ import numpy as np
 from core.abstraction.imdp.forward_reachability import RectangularForward
 from core.abstraction.imdp.imdp import IMDP
 from core.abstraction.imdp.probability_intervals import compute_probability_intervals
-from core.abstraction.imdp.rvi_storm import RVI_STORM
 from core.abstraction.imdp.robust_dp import (
     encode_imdp_labels,
     initial_product_state,
@@ -58,9 +57,7 @@ def build_imdp(args, model, partition, s_init, coarse_factor=1, use_coarse=False
         use_coarse=use_coarse,
     )
     imdp = IMDP(
-        partition=partition,
         states=np.array(partition.regions['idxs']),
-        x0=model.x0,
         goal_regions=np.array(partition.goal['bools']),
         critical_regions=np.array(partition.critical['bools']),
         P_full=P_full,
@@ -75,31 +72,21 @@ def build_imdp(args, model, partition, s_init, coarse_factor=1, use_coarse=False
 
 
 def solve_imdp(args, imdp, s0):
-    """Reach-avoid synthesis: lower and upper values (upper is None with Storm) and policy,
+    """Reach-avoid synthesis: lower and upper values and policy,
     indexed by remaining steps with a horizon."""
-    if args.solver == 'jax':
-        with jax.default_device(args.rvi_device):
-            return solve_reach_avoid(
-                imdp, initial_state=s0, horizon=args.horizon, policy_iteration=args.policy_iteration,
-                satprob=args.satprob, float_dtype=args.floatprecision,
-            )
-    if args.horizon is not None:
-        raise ValueError('Finite-horizon reach-avoid currently requires --solver jax')
-    lower, policy = RVI_STORM(args=args, imdp=imdp)
-    return lower, None, policy
+    with jax.default_device(args.rvi_device):
+        return solve_reach_avoid(
+            imdp, initial_state=s0, horizon=args.horizon, float_dtype=args.floatprecision,
+        )
 
 
 def solve_imdp_scLTL(args, imdp, s0, formula):
     """Product synthesis using only single-layer fine probability intervals."""
-    if args.solver != 'jax':
-        raise ValueError('scLTL IMDP synthesis currently requires --solver jax.')
-
     dfa = scLTL_to_DFA(formula)
     labels = encode_imdp_labels(imdp, dfa)
     with jax.default_device(args.rvi_device):
         lower, upper, policy = solve_scLTL(
-            imdp, dfa, labels, initial_state=s0, policy_iteration=args.policy_iteration,
-            satprob=args.satprob, float_dtype=args.floatprecision,
+            imdp, dfa, labels, initial_state=s0, float_dtype=args.floatprecision,
         )
     _, z0 = initial_product_state(s0, dfa, labels)
     return lower, upper, policy, dfa, z0, labels
@@ -109,7 +96,6 @@ def main():
     args = parse_arguments()
     args.coarse_factor = 1
     stamp = configure_run(args)
-
     formula = None
     # prepare_abstraction constructs the model internally; inspect the
     # factor-1 coarse data after inspecting the model in the build callback.
@@ -135,15 +121,12 @@ def main():
     reach_avoid = is_reach_avoid(formula)
     safety = is_safety(formula)
     logger.info(
-        '=== IMDP %s synthesis (solver=%s) ===',
+        '=== IMDP %s synthesis ===',
         'safety' if safety else ('reach-avoid' if reach_avoid else 'scLTL'),
-        args.solver
     )
     t = time.time()
 
     if safety:
-        if args.solver != 'jax':
-            raise ValueError('Finite-horizon safety currently requires --solver jax')
         mask = safe_state_mask(partition, model.safe_set)
         upper_mask = safe_state_mask(partition, model.safe_set, optimistic=True)
         with jax.default_device(args.rvi_device):
@@ -155,10 +138,9 @@ def main():
     elif reach_avoid:
         V, V_upper, policy = solve_imdp(args, imdp, s0)
         at = s0 if args.horizon is None else (args.horizon, s0)  # with all steps remaining
-        record_synthesis(args, t, V[at], None if V_upper is None else V_upper[at])
+        record_synthesis(args, t, V[at], V_upper[at])
         logger.info('Initial state s0=%d: value=%.6f', s0, V[at])
-        if V_upper is not None:
-            logger.info('Initial state s0=%d: upper bound=%.6f', s0, V_upper[at])
+        logger.info('Initial state s0=%d: upper bound=%.6f', s0, V_upper[at])
         policy_inputs = extract_policy_inputs(
             args, partition, policy, imdp.nr_states, time_indexed=args.horizon is not None
         )

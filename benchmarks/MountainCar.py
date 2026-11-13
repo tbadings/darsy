@@ -1,5 +1,4 @@
 from benchmarks.models import MountainCarDynamics
-import jax.numpy as jnp
 import numpy as np
 from matplotlib import animation
 import numpy as onp
@@ -13,19 +12,15 @@ class MountainCar(MountainCarDynamics):
 
     def __init__(self, args):
         MountainCarDynamics.__init__(self, args)
-
         self.plot_dimensions = [0, 1]
         # State dimension animated by plot_trajectory_gif.
         self.gif_dimensions = [0]
-
         self.set_spec()
 
     def set_spec(self):
         """Configure actions, partition, labeled regions, and specification."""
-
         self.partition = {}
-        self.targets = {}
-        
+
         # Discrete control grid: bounds and samples per input dimension.
         self.uMin = [-1]
         self.uMax = [1]
@@ -33,20 +28,17 @@ class MountainCar(MountainCarDynamics):
 
         # State-space bounds used for abstraction.
         self.partition['boundary'] = np.array([[-1.2, -0.07], [0.6, 0.07]])
-        self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
         # Nominal partition resolution along each state dimension.
         self.partition['number_per_dim'] = np.array([500, 500])
 
         # --------------------------------------------------
         # Regions of interest
         # --------------------------------------------------
-
         # Each region is a union of boxes with shape (N, 2, state_dim).
         self.regions = {
                     "r_goal": np.array([
                     [[0.45, 0], [0.6, 0.07]]
                     ], dtype=float),
-
                     "r_unsafe": np.empty((0, 2, 2), dtype=float)
                 }
 
@@ -57,7 +49,6 @@ class MountainCar(MountainCarDynamics):
         # --------------------------------------------------
         # Atomic propositions
         # --------------------------------------------------
-
         self.atomic_propositions = [
             "goal",
             "unsafe"
@@ -66,7 +57,6 @@ class MountainCar(MountainCarDynamics):
         # --------------------------------------------------
         # Labeling function L: R -> 2^AP
         # --------------------------------------------------
-
         # Assign atomic propositions to each named region of interest.
         self.labels = {
             "r_goal": {"goal"},
@@ -76,7 +66,6 @@ class MountainCar(MountainCarDynamics):
         # --------------------------------------------------
         # Temporal-logic specification (reach-avoid or general scLTL)
         # --------------------------------------------------
-
         self.specification = (
             "(!unsafe) U (goal)"
         )
@@ -84,8 +73,6 @@ class MountainCar(MountainCarDynamics):
         # --------------------------------------------------
         # Initial condition
         # --------------------------------------------------
-
-
         self.x0 = np.array([-0.6, 0])
 
     def labeling_function(self, r):
@@ -93,12 +80,11 @@ class MountainCar(MountainCarDynamics):
         if r not in self.regions:
             raise ValueError(f"Unknown region: {r}")
         return self.labels[r]
-    
+
     def plot_trajectory_gif(self, positions, filename="mountaincar.gif", fps=30, dpi=300):
         """
         Create and export a MountainCar-like GIF given a 1D array of positions.
         """
-
         xs = onp.asarray(positions, dtype=float).ravel()
         if xs.size == 0:
             raise ValueError("positions must be a non-empty 1D array.")
@@ -152,7 +138,6 @@ class MountainCar(MountainCarDynamics):
         ax.add_patch(car_poly)
         ax.add_patch(wheel_l)
         ax.add_patch(wheel_rp)
-
         fig.tight_layout()
 
         def car_pose(x):

@@ -1,6 +1,6 @@
 """Build a two-layer interval MDP and synthesize a robust reachability policy.
 
-Run with the same benchmark flags as RunIMDP.py, using --solver jax.
+Run with the same benchmark flags as RunIMDP.py.
 """
 import logging
 import time
@@ -39,41 +39,31 @@ def build_2imdp(args, model, partition, s_init):
 
 def solve_2imdp(args, imdp, s0):
     """Return lower and upper values, and a global-action policy, indexed by remaining steps with a horizon."""
-    if args.solver != 'jax':
-        raise ValueError('The 2I-MDP solver currently supports only --solver jax.')
     with jax.default_device(args.rvi_device):
         return solve_reach_avoid(
             imdp, two_layer=True, initial_state=s0, horizon=args.horizon,
-            policy_iteration=args.policy_iteration, satprob=args.satprob,
             float_dtype=args.floatprecision)
 
 
 def solve_2imdp_scLTL(args, imdp, s0, formula):
     """Return (lower, upper, global-action policy, dfa, initial z)."""
-    if args.solver != 'jax':
-        raise ValueError('sc-LTL 2IMDP synthesis requires --solver jax')
     dfa = scLTL_to_DFA(formula)
     labels = encode_imdp_labels(imdp, dfa)
     with jax.default_device(args.rvi_device):
         lower, upper, policy = solve_scLTL(
             imdp, dfa, labels, two_layer=True, initial_state=s0,
-            policy_iteration=args.policy_iteration, satprob=args.satprob,
             float_dtype=args.floatprecision)
     _, z0 = initial_product_state(s0, dfa, labels)
     return lower, upper, policy, dfa, z0, labels
 
 if __name__ == '__main__':
-
     args = parse_arguments()
-
     print("Batch size:", args.batch_size)
 
     # --------------------------------------------------
     # Configure run and construct abstraction
     # --------------------------------------------------
-
     stamp = configure_run(args)
-
     model, partition, abstraction = prepare_abstraction(
         args,
         stamp,
@@ -84,7 +74,6 @@ if __name__ == '__main__':
     # --------------------------------------------------
     # Initial abstract state
     # --------------------------------------------------
-
     s0, exists = partition.x2state(model.x0)
 
     if not exists:
@@ -95,7 +84,6 @@ if __name__ == '__main__':
     # --------------------------------------------------
     # Determine synthesis method
     # --------------------------------------------------
-
     formula = getattr(model, "specification", None)
 
     if formula is None:
@@ -105,22 +93,16 @@ if __name__ == '__main__':
 
     reach_avoid = is_reach_avoid(formula)
     safety = is_safety(formula)
-
     logger.info(
-        '=== 2IMDP %s synthesis (solver=%s) ===',
+        '=== 2IMDP %s synthesis ===',
         'safety' if safety else ('reach-avoid' if reach_avoid else 'scLTL'),
-        args.solver
     )
-
     start = time.time()
 
     # ==================================================
     # CASE 1: REACH-AVOID SYNTHESIS
     # ==================================================
-
     if safety:
-        if args.solver != 'jax':
-            raise ValueError('Finite-horizon safety currently requires --solver jax')
         mask = safe_state_mask(partition, model.safe_set)
         upper_mask = safe_state_mask(partition, model.safe_set, optimistic=True)
         with jax.default_device(args.rvi_device):
@@ -129,14 +111,11 @@ if __name__ == '__main__':
         record_synthesis(args, start, V_lower[args.horizon, s0], V_upper[args.horizon, s0])
         save_safety_results(args, s0, V_lower, V_upper, policy)
         report_safety(args, stamp, model, partition, V_lower, V_upper, policy)
-
     elif reach_avoid:
-
         logger.info(
             "Reach-avoid specification detected. "
             "Using standard robust value iteration."
         )
-
         V_lower, V_upper, policy = solve_2imdp(
             args,
             abstraction,
@@ -146,7 +125,6 @@ if __name__ == '__main__':
         # With a horizon, report the values with all steps remaining
         at = s0 if args.horizon is None else (args.horizon, s0)
         record_synthesis(args, start, V_lower[at], V_upper[at])
-
         logger.info(
             "Initial state s0=%d: lower=%.6f, upper=%.6f",
             s0,
@@ -186,9 +164,7 @@ if __name__ == '__main__':
     # ==================================================
     # CASE 2: sc-LTL SYNTHESIS
     # ==================================================
-
     else:
-
         logger.info(
             "General sc-LTL specification detected. "
             "Constructing DFA and product 2IMDP."
@@ -204,7 +180,6 @@ if __name__ == '__main__':
             )
         )
         record_synthesis(args, start, V_lower[s0, z0], V_upper[s0, z0])
-
         logger.info(
             "Initial product state (s,z)=(%d,%d): "
             "lower=%.6f, upper=%.6f",
@@ -236,7 +211,6 @@ if __name__ == '__main__':
             policy,
             abstraction.nr_states
         )
-        
 
         # Monte Carlo simulation and plotting
         report_scLTL(
@@ -254,5 +228,4 @@ if __name__ == '__main__':
     # --------------------------------------------------
     # Finish
     # --------------------------------------------------
-
     finish(args)

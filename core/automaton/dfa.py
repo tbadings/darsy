@@ -21,55 +21,12 @@ class DFA:
     states: np.ndarray
     initial_state: int
     accepting_states: np.ndarray
-    terminal_states: np.ndarray
     atomic_propositions: list[str]
     transitions: np.ndarray
 
     @property
     def n_states(self):
         return len(self.states)
-
-    @property
-    def n_ap(self):
-        return len(self.atomic_propositions)
-
-    def encode_label(self, true_propositions):
-        """
-        Encode a set of true atomic propositions as a bitmask.
-        """
-        true_propositions = set(true_propositions)
-
-        unknown = true_propositions.difference(
-            self.atomic_propositions
-        )
-
-        if unknown:
-            raise ValueError(
-                f"Unknown atomic propositions: {unknown}"
-            )
-
-        label = 0
-
-        for i, ap in enumerate(self.atomic_propositions):
-            if ap in true_propositions:
-                label |= 1 << i
-
-        return label
-
-
-    def next_state(self, state, label):
-        """
-        Evaluate the DFA transition function.
-
-        label is an integer bitmask.
-        """
-        return int(self.transitions[state, label])
-
-    def is_accepting(self, state):
-        return bool(self.accepting_states[state])
-
-    def is_sink(self, state):
-        return bool(self.terminal_states[state])
 
 
 def _evaluate_guard(guard, valuation):
@@ -85,7 +42,6 @@ def _evaluate_guard(guard, valuation):
 
     Atomic propositions are indexed by integers.
     """
-
     tokens = re.findall(
         r"\d+|[!&|()]|[tf]",
         guard.replace(" ", "")
@@ -180,7 +136,6 @@ def scLTL_to_DFA(formula):
     DFA
         Deterministic finite automaton.
     """
-
     command = [
         "ltl2tgba",
         "-f", formula,
@@ -190,38 +145,32 @@ def scLTL_to_DFA(formula):
         "--state-based-acceptance",
         "--hoaf"
     ]
-
     result = subprocess.run(
         command,
         capture_output=True,
         text=True,
         check=True
     )
-
     hoa = result.stdout
 
     # --------------------------------------------------
     # Parse HOA header
     # --------------------------------------------------
-
     states_match = re.search(
         r"^States:\s*(\d+)",
         hoa,
         re.MULTILINE
     )
-
     initial_match = re.search(
         r"^Start:\s*(\d+)\s*$",
         hoa,
         re.MULTILINE
     )
-
     ap_match = re.search(
         r'^AP:\s*(\d+)(.*)$',
         hoa,
         re.MULTILINE
     )
-
     acceptance_match = re.search(
         r"^Acceptance:\s*(.*)$",
         hoa,
@@ -238,9 +187,7 @@ def scLTL_to_DFA(formula):
 
     n_states = int(states_match.group(1))
     initial_state = int(initial_match.group(1))
-
     n_ap = int(ap_match.group(1))
-
     atomic_propositions = re.findall(
         r'"((?:\\.|[^"\\])*)"',
         ap_match.group(2)
@@ -267,14 +214,11 @@ def scLTL_to_DFA(formula):
     # --------------------------------------------------
     # Initialize DFA
     # --------------------------------------------------
-
     states = np.arange(n_states)
-
     accepting_states = np.zeros(
         n_states,
         dtype=bool
     )
-
     transitions = np.full(
         (n_states, 2**n_ap),
         -1,
@@ -284,27 +228,21 @@ def scLTL_to_DFA(formula):
     # --------------------------------------------------
     # Parse states and transitions
     # --------------------------------------------------
-
     current_state = None
 
     for line in hoa.splitlines():
-
         line = line.strip()
 
         if line.startswith("State:"):
-
             match = re.match(
                 r"State:\s*(\d+)(.*)",
                 line
             )
-
             current_state = int(match.group(1))
 
             if "{0}" in match.group(2):
                 accepting_states[current_state] = True
-
         elif line.startswith("["):
-
             if current_state is None:
                 raise ValueError(
                     "Transition without source state"
@@ -324,9 +262,7 @@ def scLTL_to_DFA(formula):
             destination = int(match.group(2))
 
             for valuation in range(2**n_ap):
-
                 if _evaluate_guard(guard, valuation):
-
                     previous = transitions[
                         current_state, valuation
                     ]
@@ -339,16 +275,10 @@ def scLTL_to_DFA(formula):
                     transitions[
                         current_state, valuation
                     ] = destination
-    
-    sink_states = np.all(
-        transitions == states[:, None],
-        axis=1
-    )
-    
+
     # --------------------------------------------------
     # Validate completeness
     # --------------------------------------------------
-
     if np.any(transitions == -1):
         raise ValueError(
             "The automaton is not complete"
@@ -357,9 +287,7 @@ def scLTL_to_DFA(formula):
     # --------------------------------------------------
     # Validate absorbing accepting states
     # --------------------------------------------------
-
     for q in np.flatnonzero(accepting_states):
-
         if not np.all(transitions[q] == q):
             raise ValueError(
                 "Accepting states are not absorbing. "
@@ -371,7 +299,6 @@ def scLTL_to_DFA(formula):
         states=states,
         initial_state=initial_state,
         accepting_states=accepting_states,
-        terminal_states=sink_states,
         atomic_propositions=atomic_propositions,
         transitions=transitions
     )
