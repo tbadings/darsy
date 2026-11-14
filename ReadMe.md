@@ -155,6 +155,122 @@ python RunIMDP.py --model MountainCar --load_checkpoint output/<timestamp>_IMDP_
 
 When `--load_checkpoint` is provided, the saved model, partition, and abstraction are loaded directly from the specified pickle file. Checkpoints are specific to the entrypoint that wrote them.
 
+# Adding a new benchmark
+
+Define the benchmark in `benchmarks/` and register its name in `benchmarks/__init__.py`; both entrypoints
+then accept it through `--model`.
+
+## 1. Choose or define the dynamics
+
+Reuse a class from [benchmarks/models.py](benchmarks/models.py) when you only
+want to change the initial state, partition, or specification. For a new system, add a
+dynamics class there with the following interface:
+
+| Attribute or method | Meaning |
+| --- | --- |
+| `n`, `p` | Number of state and control dimensions. |
+| `step(state, action, noise)` | Return the next state with shape `(n,)`, given inputs of shapes `(n,)`, `(p,)`, and `(n,)`. Use JAX-compatible operations, such as `jax.numpy`, because the framework batches and JIT-compiles this method. |
+| `noise` | A distribution providing `sample(size=..., rng=...)`, `sample_jax(key, shape=...)`, and metadata such as `noise['type']`. Samples have a trailing state dimension: requesting `(batch, steps)` produces `(batch, steps, n)`. |
+| `lipschitz` | An `(n, n)` matrix bounding the componentwise change in the next state as the current state varies, for the same action and noise. The framework uses the supplied bound directly. |
+| `wrap` | A Boolean array of length `n` marking periodic state dimensions. Implement the corresponding wrapping in `step`, as in the Dubins and pendulum models. |
+| `state_variables` | One display name per state dimension. |
+
+The existing Gaussian, triangular, and truncated Gaussian samplers are in
+[benchmarks/dynamics/distributions.py](benchmarks/dynamics/distributions.py).
+Keep random sampling in those samplers; `step` should use its supplied `noise`
+argument. The type contracts are documented in
+[core/interfaces.py](core/interfaces.py).
+
+## 2. Define the benchmark settings
+
+For example, create `benchmarks/MyBenchmark.py`. This example reuses the
+one-dimensional integrator dynamics, with a smaller domain and a goal to reach
+within ten transitions:
+
+```python
+import numpy as np
+
+from benchmarks.models import Test1DDynamics
+
+
+class MyBenchmark(Test1DDynamics):
+    """Reach a target interval with a one-dimensional stochastic integrator."""
+
+    def __init__(self, args):
+        super().__init__(args)
+        self.u_min = np.array([-1.0])
+        self.u_max = np.array([1.0])
+        self.num_actions = [3]  # Controls: -1, 0, 1.
+        self.partition = {
+            "boundary": np.array([[-5.0], [5.0]]),
+            "number_per_dim": np.array([20]),
+        }
+        self.regions = {
+            "r_goal": np.array([[[-0.5], [0.5]]]),
+            "r_unsafe": np.empty((0, 2, self.n)),
+        }
+        self.goal = self.regions["r_goal"]
+        self.critical = self.regions["r_unsafe"]
+        self.atomic_propositions = ["goal", "unsafe"]
+        self.labels = {"r_goal": {"goal"}, "r_unsafe": {"unsafe"}}
+        self.specification = "(!unsafe) U goal"
+        self.horizon = 10
+        self.x0 = np.array([-3.0])
+        self.plot_dimensions = [0]
+
+    def labeling_function(self, region: str) -> set[str]:
+        if region not in self.regions:
+            raise ValueError(f"Unknown region: {region}")
+        return self.labels[region]
+```
+
+The partition boundary has shape `(2, n)`: lower bounds followed by upper bounds.
+`number_per_dim` sets the nominal resolution; grid edges are also aligned to
+region boundaries. Each region is a union of boxes with shape `(number_of_boxes,
+2, n)`. Use `np.empty((0, 2, n))` for an empty region. Choose an initial state
+inside the partition and one or two state indices for `plot_dimensions`.
+The control grid is the Cartesian product of evenly spaced values between
+`u_min` and `u_max`, with `num_actions` values per control dimension.
+
+To choose another task:
+
+- **Reach-avoid:** use `(!unsafe) U goal`, expose `goal` and `critical` geometry,
+  and define `r_goal`/`r_unsafe` with their corresponding proposition labels.
+  Omit `horizon` for an unbounded task.
+- **Safety:** use `G(safe)`, provide `safe_set` as an array of boxes, and set a
+  nonnegative integer `horizon`. Include the safe boxes in `regions` with a
+  `safe` label so the partition aligns to their boundaries. See
+  [Temperature1D_safety.py](benchmarks/Temperature1D_safety.py).
+- **General scLTL:** define the regions and proposition labels used by the
+  formula, and omit `horizon`; the current pipeline solves these tasks over an
+  unbounded horizon. Spot must be installed. See
+  [Dubins2D_scLTL.py](benchmarks/Dubins2D_scLTL.py).
+
+## 3. Register and run the benchmark
+
+Add the import to `benchmarks/__init__.py`:
+
+```python
+from .MyBenchmark import MyBenchmark
+```
+
+Then add this entry to the existing `model_map` dictionary inside `create_model`:
+
+```python
+"MyBenchmark": MyBenchmark,
+```
+
+Run either abstraction from the repository root:
+
+```bash
+python RunIMDP.py --model MyBenchmark
+python Run2IMDP.py --model MyBenchmark --coarse_factor 3
+```
+
+Start with a small partition while checking the model, then increase the
+resolution and sample counts for your experiments. The example inherits
+`--noise_distr` support from `Test1DDynamics`.
+
 # Reproducing the experiments
 
 The main results table of the paper (Table 2) reports 13 benchmarks, each solved with an IMDP and a 2IMDP abstraction using 1 000, 10 000, and 100 000 sampled transitions per abstract state-action pair, with seed `0` and the default confidence parameter `--pac_beta 0.001`. The scripts in `experiments/` run these configurations and generate the table.
@@ -245,7 +361,7 @@ The solver returns a policy, its worst-case satisfaction probability, and its be
 
 - `--num_samples`: number of sampled transitions per state-action pair used to estimate the probability intervals (default: `5000`).
 - `--frs_num_samples`: number of samples per state-action pair used to compute the forward reachable set, which determines the possible successor states (default: `100`).
-- `--alpha`: the forward reachable set is the `[alpha/2, 100-alpha/2]` percentile envelope of the sampled next states (default: `0`, i.e. the full sampled range).
+- `--alpha`: total tail fraction in `[0, 1]`, split equally between both tails in each dimension. Before Lipschitz inflation, the sampled next-state envelope uses the `[100*alpha/2, 100*(1-alpha/2)]` percentiles. For example, `--alpha 0.1` selects the 5th and 95th percentiles. The default `0` uses the full sampled range; `1` uses the median.
 - `--pac_beta`: confidence parameter; all probability intervals of the abstraction hold jointly with probability at least `1 - pac_beta` (default: `0.001`).
 - `--coarse_factor`: number of fine cells per coarse block dimension for `Run2IMDP.py` (default: `3`).
 

@@ -41,8 +41,10 @@ def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument('--frs_num_samples', type=_positive_int, default=100,
                         help="Number of samples per state-action for the forward reachable set.")
     parser.add_argument('--alpha', type=_probability, default=0.00,
-                        help="Coverage level for the FRS percentile interval. The FRS is the "
-                             "[alpha/2, 100-alpha/2] percentile envelope of sampled next states.")
+                        help="Total tail fraction in [0, 1], split equally between both tails in each "
+                             "dimension. Uses the [100*alpha/2, 100*(1-alpha/2)] percentiles of sampled "
+                             "next states before Lipschitz inflation. For example, 0.1 selects the "
+                             "5th and 95th percentiles and 0 uses the full sampled range.")
     parser.add_argument('--pac_beta', type=_probability, default=0.001,
                         help="Confidence level for Clopper-Pearson PAC bounds on transition "
                              "probability intervals. Smaller values give wider, more conservative intervals.")
