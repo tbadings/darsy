@@ -22,8 +22,8 @@ class MountainCar(MountainCarDynamics):
         self.partition = {}
 
         # Discrete control grid: bounds and samples per input dimension.
-        self.uMin = [-1]
-        self.uMax = [1]
+        self.u_min = [-1]
+        self.u_max = [1]
         self.num_actions = [3]
 
         # State-space bounds used for abstraction.

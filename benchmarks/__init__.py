@@ -1,4 +1,8 @@
 # Public benchmark registry: import available models and map CLI names to classes.
+from argparse import Namespace
+
+from core.interfaces import Benchmark
+
 from .Dubins3D import Dubins3D, Dubins3D_scLTL
 from .Dubins2D_scLTL import Dubins2D_scLTL
 from .Pendulum import Pendulum, PendulumHard
@@ -12,7 +16,7 @@ from .Temperature3D import Temperature3D
 from .Temperature2D import Temperature2D
 
 
-def create_model(args):
+def create_model(args: Namespace) -> Benchmark:
     from core.abstraction.model import parse_model
 
     model_map = {

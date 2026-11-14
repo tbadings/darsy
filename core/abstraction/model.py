@@ -1,26 +1,36 @@
 import logging
 import time
+from collections.abc import Mapping
 
 import jax.numpy as jnp
 import numpy as np
+from numpy.typing import ArrayLike, DTypeLike
 
+from core.abstraction.imdp.imdp import IMDP
+from core.abstraction.partition import DensePartition
+from core.interfaces import Benchmark, BoolArray
 
 logger = logging.getLogger(__name__)
 
 
-def parse_model(model, float_dtype):
-    """Parse a dynamics model for abstraction: convert arrays to JAX and validate."""
+def parse_model(model: Benchmark, float_dtype: DTypeLike) -> Benchmark:
+    """Convert partition/control bounds to JAX in place; return the same model.
+
+    Bounds use float_dtype; partition counts use an integer dtype.
+    """
     logger.info('Parsing model...')
     t = time.time()
     model.partition['boundary'] = jnp.array(model.partition['boundary']).astype(float_dtype)
     model.partition['number_per_dim'] = jnp.array(model.partition['number_per_dim']).astype(int)
-    model.uMin = jnp.array(model.uMin, dtype=float_dtype)
-    model.uMax = jnp.array(model.uMax, dtype=float_dtype)
+    model.u_min = jnp.array(model.u_min, dtype=float_dtype)
+    model.u_max = jnp.array(model.u_max, dtype=float_dtype)
     logger.info('Model parsing done (took %.3f sec.)', time.time() - t)
     return model
 
 
-def identify_states_of_interest(partition, regions):
+def identify_states_of_interest(
+    partition: DensePartition, regions: Mapping[str, ArrayLike],
+) -> dict[str, BoolArray]:
     """Map each named ROI to a mask of fully contained abstract states."""
     lower_bounds = np.asarray(partition.regions['lower_bounds'])
     upper_bounds = np.asarray(partition.regions['upper_bounds'])
@@ -38,7 +48,7 @@ def identify_states_of_interest(partition, regions):
     return states_of_interest
 
 
-def attach_region_data(imdp, model, partition):
+def attach_region_data(imdp: IMDP, model: Benchmark, partition: DensePartition) -> IMDP:
     """Attach region memberships and labels to a new or checkpointed IMDP."""
     if hasattr(partition, 'states_of_interest'):
         imdp.states_of_interest = {

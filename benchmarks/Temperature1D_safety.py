@@ -19,8 +19,8 @@ class Temperature1D_safety(Temperature1DDynamics):
         self.partition = {}
 
         # Authority limit for the control u, both positive and negative
-        self.uMin = [0]
-        self.uMax = [1]
+        self.u_min = [0]
+        self.u_max = [1]
         self.num_actions = [2]
         self.partition['boundary'] = np.array([[19], [22]])
         self.partition['number_per_dim'] = np.array([100])

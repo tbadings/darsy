@@ -1,10 +1,14 @@
 import itertools
 import logging
 import time
+from collections.abc import Sequence
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+from numpy.typing import ArrayLike, DTypeLike
+
+from core.interfaces import Benchmark, IntArray
 
 from .polytope import hyperrectangles_iscontained_multi, hyperrectangles_isdisjoint_multi
 
@@ -34,7 +38,7 @@ def define_grid_jax(low, high, size):
     :param low: Lower bound of the box to cover (array).
     :param high: Upper bound of the box to cover (array).
     :param size: Number of cells per dimension (list of ints).
-    :return:
+    :return: Cartesian grid of shape (prod(size), len(size)), including endpoints.
     '''
     points = [np.linspace(low[i], high[i], size[i]) for i in range(len(size))]
     grid = meshgrid_jax(points, size)
@@ -177,7 +181,7 @@ def _compute_critical_regions(critical_regions, lower_bounds, upper_bounds, regi
 class DensePartition:
     """Full hyperrectangular grid with one shared discrete action set."""
 
-    def __init__(self, model, float_dtype):
+    def __init__(self, model: Benchmark, float_dtype: DTypeLike) -> None:
         logger.info('Define dense partition...')
         t_total = time.time()
         self.float_dtype = float_dtype
@@ -299,14 +303,8 @@ class DensePartition:
             # Diagnostic only; not used to exclude cells from labels.
             self.partial_region_cells[name] = intersects & ~contained
 
-    def x2state(self, x):
-        '''
-        Return the state ID for a given point x in the continuous state space.
-
-        :param x: Point in the continuous state space.
-        :return: (state ID, exists). exists is False (and the ID is the missing-state sentinel) when x
-            does not fall in a grid cell within the partition boundary.
-        '''
+    def x2state(self, x: ArrayLike) -> tuple[int, bool]:
+        """Return (state ID, exists) for x; missing points use the sink ID and False."""
         # Discard points outside of partition
         in_partition = np.all((x >= self.boundary_lb) * (x <= self.boundary_ub))
         if not in_partition:
@@ -318,7 +316,7 @@ class DensePartition:
             grid_idx.append(np.searchsorted(self.edges[d], x[d], side='right') - 1)
         return self.grid_idx2state(grid_idx)
 
-    def grid_idx2state(self, grid_idx):
+    def grid_idx2state(self, grid_idx: Sequence[int] | IntArray) -> tuple[int, bool]:
         '''Map a unit-cube grid index tuple to its (state ID, exists).'''
         key = 0
         for value, num in zip(grid_idx, self.grid_shape):
@@ -338,7 +336,7 @@ class DensePartition:
 
         # Discrete action grid: Cartesian product of the per-dimension action grids.
         discrete_actions_per_dimension = [
-            np.linspace(model.uMin[i], model.uMax[i], num=model.num_actions[i])
+            np.linspace(model.u_min[i], model.u_max[i], num=model.num_actions[i])
             for i in range(len(model.num_actions))
         ]
         action_array = jnp.array(list(itertools.product(*discrete_actions_per_dimension)))
@@ -349,7 +347,7 @@ class DensePartition:
 
 
 class CoarsePartition:
-    def __init__(self, partition, factor):
+    def __init__(self, partition: DensePartition, factor: int) -> None:
         self.factor = int(factor)
 
         # Fine grid geometry

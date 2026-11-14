@@ -19,8 +19,8 @@ class Dubins2D_scLTL(DubinsDynamics2D):
         self.partition = {}
 
         # Authority limit for the control u, both positive and negative
-        self.uMin = [-np.pi, 0]
-        self.uMax = [np.pi, 0.1]
+        self.u_min = [-np.pi, 0]
+        self.u_max = [np.pi, 0.1]
         self.num_actions = [8, 5]
         self.partition['boundary'] = np.array([[0, 0], [1, 1]])
         self.partition['number_per_dim'] = 3 * np.array([10, 10])

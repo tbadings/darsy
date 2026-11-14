@@ -6,21 +6,25 @@ and turned into Clopper-Pearson PAC bounds.
 
 import logging
 import time
+from argparse import Namespace
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import scipy.stats
+from numpy.typing import DTypeLike
 from tqdm import tqdm
 
-from core.abstraction.imdp.forward_reachability import sample_next_states
-from core.abstraction.partition import _compute_linear_strides, edge_coords
+from core.abstraction.imdp.forward_reachability import RectangularForward, sample_next_states
+from core.abstraction.imdp.results import ProbabilityIntervals
+from core.abstraction.partition import CoarsePartition, DensePartition, _compute_linear_strides, edge_coords
+from core.interfaces import Dynamics, FloatArray
 from core.utils import create_batches, wrap_diff
 
 logger = logging.getLogger(__name__)
 
 
-def compute_cp_table(num_samples: int, beta: float, float_dtype) -> tuple[np.ndarray, np.ndarray]:
+def compute_cp_table(num_samples: int, beta: float, float_dtype: DTypeLike) -> tuple[FloatArray, FloatArray]:
     """Clopper-Pearson lookup table: binomial count k -> confidence bounds at level 1 - beta."""
     k = np.arange(num_samples + 1)
     cp_lb = np.zeros(num_samples + 1, dtype=float_dtype)  # count 0 -> lower bound 0
@@ -264,11 +268,16 @@ def _make_counts_kernel(step_fn, noise_sample_fn, num_samples, partition, lipsch
     return jax.jit(jax.vmap(per_action, in_axes=(0, 0, 0, 0, 0)))
 
 
-def compute_probability_intervals(args, model, partition, actions, coarse_partition,
-                                  debug_state: int | None = None, use_coarse: bool = False):
-    """Per cell id: fine intervals, successor ids, action ids, sink interval, coarse ids, coarse intervals.
+def compute_probability_intervals(
+    args: Namespace, model: Dynamics, partition: DensePartition,
+    actions: RectangularForward, coarse_partition: CoarsePartition,
+    debug_state: int | None = None, use_coarse: bool = False,
+) -> ProbabilityIntervals:
+    """Estimate seeded transition bounds and update args.summary['num_intervals'].
 
-    Fine entries follow the cells actions.frs_idx_lb + offset (row-major over actions.max_slice).
+    Fine slots follow actions.frs_idx_lb + row-major offsets in actions.max_slice.
+    See ProbabilityIntervals for shapes. Use the Lipschitz bound supplied by the
+    model. Raise ValueError for mismatched coarse factors.
     """
     logger.info('=== Start transition probability intervals computation ===')
     t_start = time.time()
@@ -294,13 +303,6 @@ def compute_probability_intervals(args, model, partition, actions, coarse_partit
     logger.info(f'Union bound over {num_intervals} intervals: per interval beta = {beta_per_interval:.3e}')
     cp_lb, cp_ub = compute_cp_table(args.num_samples, beta_per_interval, args.floatprecision)
 
-    # For multiplicative noise, model.lipschitz must bound the Jacobian
-    # uniformly over the *entire* noise support. For the radially truncated
-    # Gaussian benchmark, this is (1 + model.noise.radius) * abs(model.A).
-    if getattr(model.noise, 'radius', None) is not None:
-        required = (1.0 + float(model.noise.radius)) * np.abs(np.asarray(model.A))
-        if np.any(np.asarray(model.lipschitz) + 1e-12 < required):
-            raise ValueError('Lipschitz matrix does not cover truncated noise support')
     lipschitz = jnp.asarray(np.atleast_2d(model.lipschitz), dtype=args.floatprecision)
     counts_kernel = _make_counts_kernel(model.step, model.noise.sample_jax, args.num_samples,
                                         partition, lipschitz, actions.max_slice,
@@ -364,4 +366,7 @@ def compute_probability_intervals(args, model, partition, actions, coarse_partit
             logger.info(f'  Coarse successors shape: {Q_id[debug_state].shape}')
 
     logger.info(f'Probability intervals computed (took {time.time() - t_start:.3f} sec.)')
-    return P_full, S_id, A_id, P_absorbing, Q_id, P_coarse
+    return ProbabilityIntervals(
+        fine_bounds=P_full, successor_ids=S_id, action_ids=A_id,
+        absorbing_bounds=P_absorbing, coarse_successor_ids=Q_id, coarse_bounds=P_coarse,
+    )

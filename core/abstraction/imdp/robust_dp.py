@@ -16,15 +16,35 @@ max_resident_bytes, they are built once and kept on the device instead.
 import logging
 from dataclasses import dataclass
 from functools import partial
+from typing import TypedDict, Unpack
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+from numpy.typing import ArrayLike, DTypeLike
 from tqdm import tqdm
 
+from core.abstraction.imdp.imdp import IMDP
+from core.abstraction.imdp.results import SynthesisResult
 from core.abstraction.imdp.robust_expectation import expectation_2imdp, expectation_imdp
+from core.automaton.dfa import DFA
+from core.interfaces import BoolArray, FloatArray, IntArray
 
 logger = logging.getLogger(__name__)
+
+
+class SolverOptions(TypedDict, total=False):
+    """Numerical and memory options forwarded to robust_dp."""
+
+    epsilon: float
+    max_iter: int
+    float_dtype: DTypeLike
+    chunk_entries: int
+    max_resident_bytes: int
+
+
+class HorizonOptions(SolverOptions, total=False):
+    horizon: int | None
 
 
 # ============================================================================
@@ -37,10 +57,10 @@ class Objective:
     Rows are product states (s, z), where s = imdp.absorbing_state is the sink. Free rows are
     updated by the robust Bellman operator; all other rows keep their initial value.
     """
-    next_z: np.ndarray      # (S+1, Z) int: automaton state after entering state s' from automaton state z
-    free: np.ndarray        # (S+1, Z) bool: rows updated by the Bellman operator
-    lower_init: np.ndarray  # (S+1, Z): lower-bound values at horizon 0
-    upper_init: np.ndarray  # (S+1, Z): upper-bound values at horizon 0
+    next_z: IntArray        # (S+1, Z): automaton state after entering s' from z
+    free: BoolArray         # (S+1, Z): rows updated by the Bellman operator
+    lower_init: FloatArray  # (S+1, Z): lower-bound values at horizon 0
+    upper_init: FloatArray  # (S+1, Z): upper-bound values at horizon 0
     reach: bool             # reach-type (values rise from below) or safety-type (values fall from above)
 
 
@@ -59,7 +79,7 @@ def _state_mask(imdp, mask):
     return np.append(mask, False)
 
 
-def reach_avoid_objective(imdp):
+def reach_avoid_objective(imdp: IMDP) -> Objective:
     """(!unsafe) U goal: goal states are worth one, critical states and the sink zero."""
     goal = _state_mask(imdp, imdp.goal_regions)
     critical = _state_mask(imdp, imdp.critical_regions)
@@ -69,7 +89,7 @@ def reach_avoid_objective(imdp):
                      lower_init=init, upper_init=init.copy(), reach=True)
 
 
-def safety_objective(imdp, safe_mask, safe_upper_mask=None):
+def safety_objective(imdp: IMDP, safe_mask: ArrayLike, safe_upper_mask: ArrayLike | None = None) -> Objective:
     """G(safe): safe states start at one, all others and the sink are worth zero.
 
     The lower bound uses safe_mask (cells inside the safe set); the upper bound may use a larger
@@ -83,7 +103,7 @@ def safety_objective(imdp, safe_mask, safe_upper_mask=None):
                      upper_init=safe_upper.astype(float)[:, None], reach=False)
 
 
-def scLTL_objective(imdp, dfa, labels):
+def scltl_objective(imdp: IMDP, dfa: DFA, labels: ArrayLike) -> Objective:
     """Product with a complete good-prefix DFA whose accepting states are absorbing.
 
     The automaton reads the label of the state being entered. Accepting product states are worth
@@ -115,17 +135,10 @@ def scLTL_objective(imdp, dfa, labels):
                      lower_init=init, upper_init=init.copy(), reach=True)
 
 
-def encode_imdp_labels(imdp, dfa):
-    """
-    Encode IMDP state labels using the DFA's atomic proposition ordering.
+def encode_imdp_labels(imdp: IMDP, dfa: DFA) -> IntArray:
+    """Return (S+1,) bitmasks in DFA proposition order; the sink label is zero.
 
-    Every abstract state whose cell intersects a region of interest r
-    receives all propositions in L(r).
-
-    If a state intersects multiple regions, its label is the union
-    of the propositions associated with those regions.
-
-    The absorbing state receives an empty label.
+    A cell receives the union of labels from all intersecting regions.
     """
     n = int(imdp.absorbing_state)
     aps = list(dfa.atomic_propositions)
@@ -171,7 +184,7 @@ def encode_imdp_labels(imdp, dfa):
     return labels
 
 
-def initial_product_state(s0, dfa, labels):
+def initial_product_state(s0: int, dfa: DFA, labels: IntArray) -> tuple[int, int]:
     """Initial product state under the successor-label convention."""
     s0 = int(s0)
     z0 = int(dfa.initial_state)
@@ -399,22 +412,18 @@ def _progress(V, initial_row, error):
     return postfix
 
 
-def robust_dp(imdp, objective, *, two_layer=False, horizon=None,
-              initial_row=None, epsilon=1e-6, max_iter=10000, float_dtype=np.float64,
-              chunk_entries=2 ** 22, max_resident_bytes=2 ** 31):
-    """Lower and upper bounds on the objective, and a policy that maximizes the lower bound.
+def robust_dp(
+    imdp: IMDP, objective: Objective, *, two_layer: bool = False, horizon: int | None = None,
+    initial_row: tuple[int, int] | None = None, epsilon: float = 1e-6, max_iter: int = 10000,
+    float_dtype: DTypeLike = np.float64, chunk_entries: int = 2 ** 22,
+    max_resident_bytes: int = 2 ** 31,
+) -> SynthesisResult:
+    """Maximize the lower bound and evaluate that policy's upper bound.
 
-    The upper bound is the best case of that policy.
-
-    :param imdp: IMDP (two_layer=False) or 2IMDP abstraction (two_layer=True).
-    :param objective: Objective, see reach_avoid_objective, safety_objective, scLTL_objective.
-    :param horizon: None to iterate until convergence (reach-type objectives only); H for exactly H steps.
-    :param initial_row: Product state (s0, z0), for progress output.
-    :param chunk_entries: Interval entries per chunk (states * automaton states * actions * successors).
-    :param max_resident_bytes: Keep all chunks on the device if they fit in this many bytes.
-    :return: lower, upper, policy (global action ids, -1 on rows that are not free). Without a
-        horizon, each has shape (S+1, Z); with horizon H, shape (H+1, S+1, Z), where index h is the
-        number of remaining steps.
+    Results have shape (S+1, Z), or (H+1, S+1, Z) with remaining-step indexing.
+    horizon=None iterates to epsilon or max_iter; safety requires a horizon.
+    chunk_entries limits interval entries per batch; max_resident_bytes caps
+    device caching. initial_row selects the product state shown in progress.
     """
     if horizon is None and not objective.reach:
         # Values falling from above converge to an over-approximation of the lower bound
@@ -433,7 +442,10 @@ def robust_dp(imdp, objective, *, two_layer=False, horizon=None,
                                          epsilon=epsilon, max_iter=max_iter, initial_row=initial_row)
         upper = _evaluate_upper(bellman, upper, policy, monotone=True,
                                 epsilon=epsilon, max_iter=max_iter)
-        return np.asarray(lower), np.asarray(upper), bellman.global_actions(policy, objective.free)
+        return SynthesisResult(
+            lower=np.asarray(lower), upper=np.asarray(upper),
+            policy=bellman.global_actions(policy, objective.free),
+        )
 
     # Finite horizon: step h reads only the values of step h - 1
     lowers, uppers, policies = [lower], [upper], [policy]
@@ -445,31 +457,46 @@ def robust_dp(imdp, objective, *, two_layer=False, horizon=None,
         policies.append(policy)
     policy = np.stack([np.asarray(p) for p in policies])
     policy[0] = -1  # no step left to take
-    return (np.stack([np.asarray(v) for v in lowers]), np.stack([np.asarray(v) for v in uppers]),
-            bellman.global_actions(policy, objective.free))
+    return SynthesisResult(
+        lower=np.stack([np.asarray(v) for v in lowers]),
+        upper=np.stack([np.asarray(v) for v in uppers]),
+        policy=bellman.global_actions(policy, objective.free),
+    )
 
 
 # ============================================================================
 # SPECIFICATIONS
 # ============================================================================
-def solve_reach_avoid(imdp, *, two_layer=False, initial_state=None, **kwargs):
-    """Reach-avoid synthesis: returns lower, upper, policy, each of shape (S+1,), or (H+1, S+1)
-    with horizon H, where index h is the number of remaining steps."""
+def solve_reach_avoid(
+    imdp: IMDP, *, two_layer: bool = False, initial_state: int | None = None,
+    **kwargs: Unpack[HorizonOptions],
+) -> SynthesisResult:
+    """Solve reach-avoid; arrays are (S+1,) or (H+1, S+1), indexed by remaining steps."""
     initial_row = None if initial_state is None else (initial_state, 0)
-    lower, upper, policy = robust_dp(imdp, reach_avoid_objective(imdp), two_layer=two_layer,
-                                     initial_row=initial_row, **kwargs)
-    return lower[..., 0], upper[..., 0], policy[..., 0]
+    result = robust_dp(imdp, reach_avoid_objective(imdp), two_layer=two_layer,
+                       initial_row=initial_row, **kwargs)
+    return SynthesisResult(result.lower[..., 0], result.upper[..., 0], result.policy[..., 0])
 
 
-def solve_safety(imdp, safe_mask, safe_upper_mask, horizon, *, two_layer=False, **kwargs):
-    """Finite-horizon safety: returns lower, upper, policy of shape (H+1, S+1), index h = remaining steps."""
-    lower, upper, policy = robust_dp(imdp, safety_objective(imdp, safe_mask, safe_upper_mask),
-                                     two_layer=two_layer, horizon=horizon, **kwargs)
-    return lower[..., 0], upper[..., 0], policy[..., 0]
+def solve_safety(
+    imdp: IMDP, safe_mask: ArrayLike, safe_upper_mask: ArrayLike | None, horizon: int,
+    *, two_layer: bool = False, **kwargs: Unpack[SolverOptions],
+) -> SynthesisResult:
+    """Solve finite-horizon safety; arrays are (H+1, S+1), indexed by remaining steps."""
+    result = robust_dp(imdp, safety_objective(imdp, safe_mask, safe_upper_mask),
+                       two_layer=two_layer, horizon=horizon, **kwargs)
+    return SynthesisResult(result.lower[..., 0], result.upper[..., 0], result.policy[..., 0])
 
 
-def solve_scLTL(imdp, dfa, labels, *, two_layer=False, initial_state=None, **kwargs):
-    """scLTL synthesis on the product with the DFA: returns lower, upper, policy of shape (S+1, Z)."""
+def solve_scltl(
+    imdp: IMDP, dfa: DFA, labels: IntArray, *, two_layer: bool = False,
+    initial_state: int | None = None, **kwargs: Unpack[HorizonOptions],
+) -> SynthesisResult:
+    """Solve on the DFA product using (S+1,) labels in DFA proposition order.
+
+    Arrays are (S+1, Z), or (H+1, S+1, Z) with remaining-step indexing.
+    The DFA must be complete with absorbing accepting states.
+    """
     initial_row = None if initial_state is None else initial_product_state(initial_state, dfa, labels)
-    return robust_dp(imdp, scLTL_objective(imdp, dfa, labels), two_layer=two_layer,
+    return robust_dp(imdp, scltl_objective(imdp, dfa, labels), two_layer=two_layer,
                      initial_row=initial_row, **kwargs)

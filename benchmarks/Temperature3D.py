@@ -18,8 +18,8 @@ class Temperature3D(Temperature3DDynamics):
         self.partition = {}
 
         # Three independent on/off heaters: 2**3 = 8 possible actions.
-        self.uMin = np.zeros(3)
-        self.uMax = np.ones(3)
+        self.u_min = np.zeros(3)
+        self.u_max = np.ones(3)
         self.num_actions = np.full(3, 2, dtype=int)
 
         # State-space bounds and the safety region coincide.

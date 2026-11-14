@@ -15,8 +15,8 @@ class Temperature1D_reach(Temperature1DDynamics):
         self.partition = {}
 
         # Discrete control grid: bounds and samples per input dimension.
-        self.uMin = [0]
-        self.uMax = [1]
+        self.u_min = [0]
+        self.u_max = [1]
         self.num_actions = [2]
 
         # State-space bounds used for abstraction.

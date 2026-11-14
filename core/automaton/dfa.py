@@ -4,44 +4,26 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from core.interfaces import BoolArray, IntArray
+
 
 @dataclass
 class DFA:
-    """
-    Complete deterministic finite automaton.
+    """Complete DFA with transitions (Z, 2**n_ap) indexed by proposition bitmasks."""
 
-    States are indexed from 0 to n_states - 1.
-
-    The transition table has shape:
-        (n_states, 2**n_ap)
-
-    Atomic propositions are encoded using bitmasks.
-    """
-
-    states: np.ndarray
+    states: IntArray
     initial_state: int
-    accepting_states: np.ndarray
+    accepting_states: BoolArray
     atomic_propositions: list[str]
-    transitions: np.ndarray
+    transitions: IntArray
 
     @property
-    def n_states(self):
+    def n_states(self) -> int:
         return len(self.states)
 
 
-def _evaluate_guard(guard, valuation):
-    """
-    Evaluate an explicit HOA transition guard.
-
-    Supported operators:
-        !   negation
-        &   conjunction
-        |   disjunction
-        t   true
-        f   false
-
-    Atomic propositions are indexed by integers.
-    """
+def _evaluate_guard(guard: str, valuation: int) -> bool:
+    """Evaluate an HOA guard using !, &, |, parentheses, t/f, and proposition indices."""
     tokens = re.findall(
         r"\d+|[!&|()]|[tf]",
         guard.replace(" ", "")
@@ -115,26 +97,11 @@ def _evaluate_guard(guard, valuation):
 
     return result
 
-def scLTL_to_DFA(formula):
-    """
-    Translate an sc-LTL formula into a complete DFA.
+def scltl_to_dfa(formula: str) -> DFA:
+    """Translate with Spot's ltl2tgba to a complete DFA with absorbing accepting states.
 
-    Uses Spot to construct a deterministic, complete,
-    state-based Buchi automaton.
-
-    This function requires all accepting states to be
-    absorbing. It rejects outputs that do not satisfy
-    this condition.
-
-    Parameters
-    ----------
-    formula : str
-        sc-LTL specification.
-
-    Returns
-    -------
-    DFA
-        Deterministic finite automaton.
+    Raise FileNotFoundError if Spot is missing, CalledProcessError if it fails,
+    and ValueError for unsupported or incomplete HOA output.
     """
     command = [
         "ltl2tgba",

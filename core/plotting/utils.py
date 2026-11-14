@@ -1,56 +1,75 @@
+from collections.abc import Sequence
+
 import numpy as np
+from matplotlib.axes import Axes
 from matplotlib.patches import Rectangle
+
+from core.interfaces import Benchmark, FloatArray, IntArray
 
 # Resolution of all saved PNG figures (PDFs are vector graphics and unaffected)
 PNG_DPI = 600
 
-def plot_boxes(ax, model, plot_dimensions=[0, 1], labels=False, latex=False, size=12):
-    ''' Plot the target, initial, and unsafe state sets '''
-    lsize = size + 4
+def plot_boxes(
+    ax: Axes, model: Benchmark, plot_dimensions: list[int] | IntArray | None = None,
+    labels: bool = False, latex: bool = False, size: float = 12,
+) -> None:
+    """Add goal/unsafe boxes to ax, selecting dimensions [0, 1] by default.
+
+    Labels use size + 4 points and mathematical notation when latex=True.
+    """
+    if plot_dimensions is None:
+        plot_dimensions = [0, 1]
+    label_size = size + 4
 
     # Plot target set
-    for set in model.goal:
-        low = set[0]
-        high = set[1]
+    for box in model.goal:
+        low = box[0]
+        high = box[1]
         width, height = (high - low)[plot_dimensions]
         ax.add_patch(Rectangle(low[plot_dimensions], width, height, facecolor='green', alpha=0.3, edgecolor='green'))
-        MID = (high + low)[plot_dimensions] / 2
+        midpoint = (high + low)[plot_dimensions] / 2
         if labels:
             if latex:
-                text = '$\mathcal{X}_T$'
+                text = r'$\mathcal{X}_T$'
             else:
                 text = 'X_T'
-            ax.annotate(text, MID, color='green', fontsize=lsize, ha='center', va='center')
+            ax.annotate(text, midpoint, color='green', fontsize=label_size, ha='center', va='center')
 
     # Plot unsafe set
-    for set in model.critical:
-        low = set[0]
-        high = set[1]
+    for box in model.critical:
+        low = box[0]
+        high = box[1]
         width, height = (high - low)[plot_dimensions]
         ax.add_patch(Rectangle(low[plot_dimensions], width, height, facecolor='red', alpha=0.3, edgecolor='red'))
-        MID = (high + low)[plot_dimensions] / 2
+        midpoint = (high + low)[plot_dimensions] / 2
         if labels:
             if latex:
-                text = '$\mathcal{X}_U$'
+                text = r'$\mathcal{X}_U$'
             else:
                 text = 'X_U'
-            ax.annotate(text, MID, color='red', fontsize=lsize, ha='center', va='center')
+            ax.annotate(text, midpoint, color='red', fontsize=label_size, ha='center', va='center')
 
     return
 
 
-def plot_grid(ax, state_min, state_max, size=[1,1]):
+def plot_grid(
+    ax: Axes, state_min: FloatArray, state_max: FloatArray,
+    size: Sequence[float] | FloatArray | None = None,
+) -> None:
+    """Add grid lines to ax using (2,) bounds and spacing [1, 1] by default."""
+    if size is None:
+        size = [1, 1]
     min_floor = state_min // np.array(size)
     max_ceil = state_max // np.array(size) + 1
-    X = np.arange(min_floor[0], max_ceil[0], size[0])
-    Y = np.arange(min_floor[1], max_ceil[1], size[1])
+    x_positions = np.arange(min_floor[0], max_ceil[0], size[0])
+    y_positions = np.arange(min_floor[1], max_ceil[1], size[1])
 
     # Vertical lines
-    ax.hlines(Y, xmin=state_min[0] - 1, xmax=state_max[0] + 1, color='gray', linewidth=0.5)
-    ax.vlines(X, ymin=state_min[1] - 1, ymax=state_max[1] + 1, color='gray', linewidth=0.5)
+    ax.hlines(y_positions, xmin=state_min[0] - 1, xmax=state_max[0] + 1, color='gray', linewidth=0.5)
+    ax.vlines(x_positions, ymin=state_min[1] - 1, ymax=state_max[1] + 1, color='gray', linewidth=0.5)
 
 
-def set_plot_ticks(ax, state_min, state_max, width):
+def set_plot_ticks(ax: Axes, state_min: FloatArray, state_max: FloatArray, width: FloatArray) -> None:
     regions = np.round((state_max - state_min) / width)
 
     # Plot at most x ticks per axis, but at least skip every 4 regions
@@ -71,7 +90,7 @@ def set_plot_ticks(ax, state_min, state_max, width):
             tic.tick2line.set_visible(False)
 
     # plt.grid(which='minor', color='#CCCCCC', linewidth=0.3)
-def set_plot_lims(ax, state_min, state_max):
+def set_plot_lims(ax: Axes, state_min: FloatArray, state_max: FloatArray) -> None:
     # Goal x-y limits
     ax.set_xlim(state_min[0], state_max[0])
     ax.set_ylim(state_min[1], state_max[1])

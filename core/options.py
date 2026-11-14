@@ -1,4 +1,5 @@
 import argparse
+from collections.abc import Sequence
 
 import numpy as np
 
@@ -17,12 +18,8 @@ def _probability(value: str) -> float:
     return parsed
 
 
-def parse_arguments(argv=None):
-    '''
-    Function to parse arguments provided
-
-    :return: Object with all arguments
-    '''
+def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse run options, normalize the noise alias, and select float64 precision."""
     # Options
     parser = argparse.ArgumentParser()
     parser.add_argument('--seed', type=int, default=0,

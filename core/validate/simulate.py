@@ -1,16 +1,51 @@
 import logging
+from typing import NotRequired, TypedDict
+
 import numpy as np
+from numpy.typing import ArrayLike
 from tqdm import tqdm
+
+from core.abstraction.partition import DensePartition
+from core.automaton.dfa import DFA
+from core.interfaces import BoolArray, Dynamics, FloatArray, IntArray
 
 logger = logging.getLogger(__name__)
 
 
-class MonteCarloSim():
-    '''
-    Class to run Monte Carlo simulations on the discrete-time stochastic system closed under a fixed Markov policy.
-    '''
+class SimulationTrace(TypedDict):
+    """A trajectory, with optional product-state and termination metadata."""
 
-    def __init__(self, model, partition, policy, policy_inputs, x0, iterations=100, sim_horizon=1000, random_initial_state=False, verbose=True):
+    k: list[int]
+    x: list[FloatArray]
+    u: list[FloatArray]
+    s: NotRequired[list[int]]
+    z: NotRequired[list[int]]
+    a: NotRequired[list[int]]
+    labels: NotRequired[list[int]]
+    status: NotRequired[str]
+
+
+class SimulationResults(TypedDict):
+    satprob: float
+    goal_reached: BoolArray
+    traces: dict[int, SimulationTrace]
+    satisfied: NotRequired[BoolArray]
+
+
+class MonteCarloSim():
+    """Monte Carlo validation of a reach-avoid policy."""
+
+    def __init__(
+        self, model: Dynamics, partition: DensePartition, policy: IntArray,
+        policy_inputs: FloatArray, x0: ArrayLike, iterations: int = 100,
+        sim_horizon: int = 1000, random_initial_state: bool = False, verbose: bool = True,
+    ) -> None:
+        """Sample noise, run simulations immediately, and populate self.results.
+
+        Policy is (S+1,) or (H+1, S+1); controls are (S, p) or (H+1, S, p).
+        Time rows use elapsed steps: reverse solver outputs before passing them.
+        x0 has shape (n,); random_initial_state samples uniformly within its cell.
+        """
         logger.info('=== Start Monte Carlo simulations ===')
         self.verbose = verbose
         self.model = model
@@ -23,7 +58,7 @@ class MonteCarloSim():
 
         # Predefine noise to speed up computations
         self.define_noise_values()
-        self.results = {
+        self.results: SimulationResults = {
             'satprob': -1,
             'goal_reached': np.full(self.iterations, False, dtype=bool),
             'traces': {}
@@ -31,11 +66,11 @@ class MonteCarloSim():
 
         # For each of the monte carlo iterations
         for m in tqdm(range(self.iterations)):
-            self.results['traces'][m], self.results['goal_reached'][m] = self._runIteration(x0, m)
+            self.results['traces'][m], self.results['goal_reached'][m] = self._run_iteration(x0, m)
 
         self.results['satprob'] = np.mean(self.results['goal_reached'])
 
-    def define_noise_values(self):
+    def define_noise_values(self) -> None:
         '''
         Predefine the noise values to speed up computations.
         '''
@@ -48,19 +83,11 @@ class MonteCarloSim():
             self.model.noise['mean'], self.model.noise['cov'],
             (self.iterations, self.horizon))
 
-    def _runIteration(self, x0, m):
-        '''
-        Run a Monte Carlo simulation from x0.
-
-        :param x0: Initial continuous state.
-        :param m: Simulation number.
-        :return:
-            - trace: Dictionary containing the state and input at each time step.
-            - success: Boolean indicating whether goal was reached.
-        '''
+    def _run_iteration(self, x0: ArrayLike, m: int) -> tuple[SimulationTrace, bool]:
+        """Return (trace, goal reached) using the noise samples for run m."""
         # Initialize variables at start of iteration
         success = False
-        trace = {'k': [], 'x': [], 'u': []}
+        trace: SimulationTrace = {'k': [], 'x': [], 'u': []}
         k = 0
 
         # Initialize the current simulation
@@ -155,33 +182,32 @@ class MonteCarloSim():
         return trace, success
 
 
-class MonteCarloSim_scLTL(MonteCarloSim):
-    """
-    Monte Carlo validation of a stationary product policy sigma[s,z].
+class ScltlMonteCarloSim(MonteCarloSim):
+    """Validate a stationary product policy, reading each state label before acting.
 
-    The DFA processes the initial abstract-state label before the first
-    action, then processes each successor label.
-
-    Acceptance is checked after each DFA update.
-
-    A transition outside the partition fails unless acceptance
-    occurred earlier.
+    Acceptance ends a run; leaving the partition before acceptance fails it.
     """
 
     def __init__(
         self,
-        model,
-        partition,
-        policy,
-        policy_inputs,
-        x0,
-        dfa,
-        labels,
-        iterations=100,
-        sim_horizon=1000,
-        random_initial_state=False,
-        verbose=False,
-    ):
+        model: Dynamics,
+        partition: DensePartition,
+        policy: IntArray,
+        policy_inputs: FloatArray,
+        x0: ArrayLike,
+        dfa: DFA,
+        labels: IntArray,
+        iterations: int = 100,
+        sim_horizon: int = 1000,
+        random_initial_state: bool = False,
+        verbose: bool = False,
+    ) -> None:
+        """Validate inputs, sample noise, and populate self.results immediately.
+
+        Policy is (S+1, Z), controls (S, Z, p), labels (S+1,) in DFA bitmask order.
+        Other arguments follow MonteCarloSim. Invalid dimensions, counts,
+        labels, or transition indices raise ValueError.
+        """
         logger.info("=== Start sc-LTL Monte Carlo simulations ===")
 
         # --------------------------------------------------
@@ -321,7 +347,7 @@ class MonteCarloSim_scLTL(MonteCarloSim):
         # Run Monte Carlo simulations
         # --------------------------------------------------
         for m in tqdm(range(self.iterations)):
-            trace, success = self._runIteration(x0, m)
+            trace, success = self._run_iteration(x0, m)
             self.results["traces"][m] = trace
             self.results["satisfied"][m] = success
 
@@ -333,19 +359,8 @@ class MonteCarloSim_scLTL(MonteCarloSim):
             np.mean(self.results["satisfied"])
         )
 
-    def _runIteration(self, x0, m):
-        """
-        Run one Monte Carlo simulation.
-
-        Returns
-        -------
-        trace : dict
-            Continuous states, abstract states, DFA states,
-            actions, labels, and termination status.
-
-        success : bool
-            True if the DFA reaches an accepting state.
-        """
+    def _run_iteration(self, x0: ArrayLike, m: int) -> tuple[SimulationTrace, bool]:
+        """Return (product trace, accepted) using the noise samples for run m."""
         x = np.asarray(x0, dtype=self.partition.float_dtype).copy()
 
         # --------------------------------------------------
@@ -371,7 +386,7 @@ class MonteCarloSim_scLTL(MonteCarloSim):
         # --------------------------------------------------
         # Initialize trace
         # --------------------------------------------------
-        trace = {
+        trace: SimulationTrace = {
             "k": [0],
             "x": [x.copy()],
             "u": [],

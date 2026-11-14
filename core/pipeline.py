@@ -17,13 +17,19 @@ import random
 import re
 import subprocess
 import time
+from argparse import Namespace
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 import benchmarks
+from core.abstraction.imdp.imdp import IMDP
 from core.abstraction.model import attach_region_data
 from core.abstraction.partition import DensePartition
+from core.automaton.dfa import DFA
+from core.interfaces import Benchmark, BoolArray, FloatArray, IntArray, SafetyBenchmark
 from core.jax_config import configure_jax
 from core.utils import add_file_handler, configure_logging
 
@@ -37,13 +43,8 @@ ABSTRACTION_SETTINGS = ('coarse_factor', 'num_samples', 'frs_num_samples', 'alph
                         'batch_size', 'frs_batch_size')
 
 
-def configure_run(args):
-    '''
-    Configure logging, JAX, and the random seeds for this run.
-
-    :param args: Argument namespace, extended in place with the run paths.
-    :return: Timestamp string identifying the run.
-    '''
+def configure_run(args: Namespace) -> str:
+    """Configure logging, JAX, and seeds; add run state to args and return a timestamp."""
     configure_logging(args.log_level)
     configure_jax(args)
     random.seed(args.seed)
@@ -56,28 +57,16 @@ def configure_run(args):
     return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
-def record_synthesis(args, start, lower, upper):
-    '''
-    Store the synthesis time and the bounds at the initial state in the run summary.
-
-    :param args: Argument namespace.
-    :param start: Time at which the synthesis started.
-    :param lower: Lower bound on the satisfaction probability in the initial state.
-    :param upper: Upper bound on the satisfaction probability in the initial state.
-    '''
+def record_synthesis(args: Namespace, start: float, lower: float, upper: float) -> None:
+    """Record elapsed synthesis time and initial-state bounds in args.summary."""
     args.summary['time_synthesis'] = time.time() - start
     args.summary['lower_bound'] = float(lower)
     args.summary['upper_bound'] = float(upper)
     logger.info('<<< Synthesis took %.3f sec. >>>\n', args.summary['time_synthesis'])
 
 
-def write_summary(args, model):
-    '''
-    Export the run summary (settings, runtimes, model size, and results) to summary.csv.
-
-    :param args: Argument namespace.
-    :param model: Benchmark model.
-    '''
+def write_summary(args: Namespace, model: Benchmark) -> None:
+    """Write settings, runtimes, sizes, and results to args.output_dir/summary.csv."""
     rows = {
         'model': args.model,
         'abstraction': args.summary.get('abstraction'),
@@ -121,16 +110,10 @@ def _open_output_dir(args, stamp):
     return run_output_dir
 
 
-def save_checkpoint(args, key, model, partition, abstraction):
-    '''
-    Write the model, partition, and abstraction to checkpoint.pkl in the run output directory.
-
-    :param args: Argument namespace.
-    :param key: Key under which the abstraction is stored ('imdp' or '2imdp').
-    :param model: Benchmark model.
-    :param partition: Partition of the continuous state space.
-    :param abstraction: Abstraction object to store.
-    '''
+def save_checkpoint(
+    args: Namespace, key: str, model: Benchmark, partition: DensePartition, abstraction: IMDP,
+) -> None:
+    """Save checkpoint.pkl under key 'imdp' or '2imdp', excluding the JAX device."""
     # Strip JAX runtime objects that can't be pickled
     args_to_save = copy.copy(args)
     del args_to_save.rvi_device
@@ -142,7 +125,9 @@ def save_checkpoint(args, key, model, partition, abstraction):
     logger.info('Checkpoint saved.\n')
 
 
-def save_safety_results(args, s0, lower, upper, policy):
+def save_safety_results(
+    args: Namespace, s0: int, lower: FloatArray, upper: FloatArray, policy: IntArray,
+) -> None:
     """Save time-indexed values and global-action policy; index h is remaining horizon."""
     np.savez_compressed(
         args.output_dir / 'safety_synthesis.npz',
@@ -153,13 +138,19 @@ def save_safety_results(args, s0, lower, upper, policy):
                 args.horizon, s0, lower[args.horizon, s0], upper[args.horizon, s0])
 
 
-def is_safety(formula):
+def is_safety(formula: str) -> bool:
     """Recognize the finite-horizon safety specification G(safe)."""
     return bool(re.fullmatch(r"G\(safe\)", re.sub(r"\s+", "", formula)))
 
 
-def safe_state_mask(partition, safe_set, *, optimistic=False):
-    """Conservatively label cells fully contained in a union of safe boxes."""
+def safe_state_mask(
+    partition: DensePartition, safe_set: ArrayLike, *, optimistic: bool = False,
+) -> BoolArray:
+    """Return an (S,) mask for safe boxes shaped (B, 2, D) or (2, D).
+
+    Require containment in one box, or positive-volume overlap if optimistic.
+    Raise ValueError for invalid shapes or nonpositive side lengths.
+    """
     boxes = np.asarray(safe_set, dtype=float)
     lo = np.asarray(partition.regions['lower_bounds'])
     hi = np.asarray(partition.regions['upper_bounds'])
@@ -179,14 +170,8 @@ def safe_state_mask(partition, safe_set, *, optimistic=False):
     return mask
 
 
-def is_reach_avoid(formula):
-    """
-    Check whether the specification is exactly
-
-        (!unsafe) U goal
-
-    allowing whitespace and optional parentheses
-    """
+def is_reach_avoid(formula: str) -> bool:
+    """Recognize (!unsafe) U goal with optional whitespace and operand parentheses."""
     # Remove whitespace
     formula = re.sub(r"\s+", "", formula)
 
@@ -201,7 +186,11 @@ def is_reach_avoid(formula):
     return formula in reach_avoid_formulas
 
 
-def is_scLTL(formula):
+def is_scltl(formula: str) -> bool:
+    """Return whether Spot's ltlfilt --guarantee emits a filtered formula.
+
+    Raise FileNotFoundError if ltlfilt is unavailable on PATH.
+    """
     # Check whether the specification is co-safe
     check_result = subprocess.run(
         [
@@ -217,18 +206,15 @@ def is_scLTL(formula):
     return bool(check_result.stdout.strip())
 
 
-def prepare_abstraction(args, stamp, name, build):
-    '''
-    Obtain the abstraction for this run, either from a checkpoint or by building it from scratch.
+def prepare_abstraction(
+    args: Namespace, stamp: str, name: str,
+    build: Callable[[Namespace, Benchmark, DensePartition, int], IMDP],
+) -> tuple[Benchmark, DensePartition, IMDP]:
+    """Load or build (model, partition, abstraction), updating args and output paths.
 
-    :param args: Argument namespace.
-    :param stamp: Run timestamp.
-    :param name: Name of the abstraction ('IMDP' or '2IMDP'); its lowercase form is the
-        key under which the abstraction is stored in the checkpoint.
-    :param build: Callback (args, model, partition, s_init) -> abstraction, invoked when the
-        abstraction is generated from scratch.
-    :return: Tuple of (model, partition, abstraction).
-    '''
+    name is IMDP or 2IMDP. Building calls build(args, model, partition, s_init);
+    checkpoint loading uses the lowercase name as its abstraction key.
+    """
     key = name.lower()
     args.summary['abstraction'] = name
 
@@ -291,7 +277,7 @@ def prepare_abstraction(args, stamp, name, build):
             raise ValueError('Reach-avoid requires goal and unsafe propositions.')
         if 'goal' not in labels.get('r_goal', ()) or 'unsafe' not in labels.get('r_unsafe', ()):
             raise ValueError('Invalid reach-avoid region labels.')
-    elif not is_scLTL(formula):
+    elif not is_scltl(formula):
         raise ValueError('Specification must be reach-avoid, scLTL, or G(safe).')
     set_horizon(args, model)
     t = time.time()
@@ -318,51 +304,15 @@ def prepare_abstraction(args, stamp, name, build):
     return model, partition, abstraction
 
 
-def extract_policy_inputs(args, partition, policy, nr_states, *, time_indexed=False):
-    """
-    Map action indices to continuous control inputs.
+def extract_policy_inputs(
+    args: Namespace, partition: DensePartition, policy: IntArray, nr_states: int,
+    *, time_indexed: bool = False,
+) -> FloatArray:
+    """Map global action IDs to controls, excluding the sink and using NaN for invalid IDs.
 
-    Supports:
-        Reach-avoid:                policy[s]
-        Finite-horizon reach-avoid: policy[h, s]
-        sc-LTL:                     policy[s, z]
-
-    Parameters
-    ----------
-    args : Namespace
-        Argument namespace.
-
-    partition : object
-        Partition of the continuous state space.
-
-    policy : np.ndarray
-        Global action indices. Shape:
-            (nr_states,) for reach-avoid
-            (H+1, nr_states) for finite-horizon reach-avoid, where h is the number of remaining steps
-            (nr_states, n_dfa_states) for sc-LTL
-
-    nr_states : int
-        Number of IMDP states, including the absorbing state.
-
-    time_indexed : bool
-        Whether policy is a finite-horizon reach-avoid policy, which has the same number of
-        dimensions as an sc-LTL policy.
-
-    Returns
-    -------
-    np.ndarray
-        Continuous control inputs.
-
-        Reach-avoid:
-            (nr_states - 1, control_dim)
-
-        Finite-horizon reach-avoid:
-            (H+1, nr_states - 1, control_dim)
-
-        sc-LTL:
-            (nr_states - 1, n_dfa_states, control_dim)
-
-        States without an enabled action contain NaN.
+    With S = nr_states - 1 and U controls, map (S+1,) to (S, U), or (S+1, Z)
+    to (S, Z, U). time_indexed maps (H+1, S+1) to (H+1, S, U), with h remaining
+    steps. This flag distinguishes finite-horizon policies from DFA policies.
     """
     if time_indexed:
         return np.stack([extract_policy_inputs(args, partition, p, nr_states) for p in policy])
@@ -454,29 +404,17 @@ def _guard(description, failures, fn, *fn_args, **fn_kwargs):
         return None
 
 
-def report(args, stamp, model, partition, V, policy, policy_inputs, iterations=1000, num_traces=10,
-           sim_horizon=1000):
-    '''
-    Validate the synthesised policy by simulation and write the figures for this run.
+def report(
+    args: Namespace, stamp: str, model: Benchmark, partition: DensePartition,
+    V: FloatArray, policy: IntArray, policy_inputs: FloatArray,
+    iterations: int = 1000, num_traces: int = 10, sim_horizon: int = 1000,
+) -> list[str]:
+    """Simulate reach-avoid, update args.summary, save figures, and return failed steps.
 
-    Every step is best-effort: policy synthesis is the expensive part of a run and its result
-    is only persisted when --save_checkpoint is set, so a failure while validating or plotting
-    is logged and the remaining steps still run rather than discarding the run.
-
-    :param args: Argument namespace.
-    :param stamp: Run timestamp.
-    :param model: Benchmark model.
-    :param partition: Partition of the continuous state space.
-    :param V: Value function over the abstraction states; with a horizon H, of shape (H+1, S+1),
-        where index h is the number of remaining steps.
-    :param policy: Action index per state; with a horizon, indexed by remaining steps like V.
-    :param policy_inputs: Control input per state, from extract_policy_inputs; with a horizon,
-        indexed by remaining steps like V.
-    :param iterations: Number of Monte Carlo simulations to run.
-    :param num_traces: Number of simulated traces to draw in the trace plots.
-    :param sim_horizon: Number of simulated steps without a horizon; with a horizon H, exactly H.
-    :return: List of descriptions of the steps that failed (empty if all succeeded).
-    '''
+    Values/policy are (S+1,) or (H+1, S+1), indexed by remaining steps.
+    Controls come from extract_policy_inputs. A finite horizon replaces sim_horizon.
+    Files go to args.output_dir; guarded failures are logged and processing continues.
+    """
     from core.plotting.heatmap import heatmap
     from core.plotting.trajectories import plot_trajectories
     from core.validate.simulate import MonteCarloSim
@@ -530,12 +468,8 @@ def report(args, stamp, model, partition, V, policy, policy_inputs, iterations=1
     return failures
 
 
-def finish(args):
-    '''
-    Log the closing banner for the run.
-
-    :param args: Argument namespace.
-    '''
+def finish(args: Namespace) -> None:
+    """Log the run's output directory and closing banner."""
     logger.info('\n=== Run finished. Output directory: %s ===', args.output_dir)
     logger.info('====================\n')
 
@@ -565,16 +499,20 @@ def draw_regions_of_interest(ax, model, dimensions=None):
                 transform=getattr(ax, 'roi_physical_transform', ax.transData),
             ))
 
-def report_scLTL(args, stamp, model, partition, V_lower, policy, dfa, labels,
-                  policy_inputs, *, iterations=1000, num_traces=10, sim_horizon=1000):
-    """Validate product policy and plot the initial-label DFA slice.
+def report_scltl(
+    args: Namespace, stamp: str, model: Benchmark, partition: DensePartition,
+    V_lower: FloatArray, policy: IntArray, dfa: DFA, labels: IntArray,
+    policy_inputs: FloatArray, *, iterations: int = 1000, num_traces: int = 10,
+    sim_horizon: int = 1000,
+) -> list[str]:
+    """Validate a product policy, update args.summary, and return failed guarded steps.
 
-    Heatmaps display values and controls for z = delta(z0,L(s)) at each s.
-    They are not plots of the full product-state policy.
+    Values/policy are (S+1, Z), labels (S+1,), controls (S, Z, U).
+    Save results and figures in args.output_dir; heatmaps select z = delta(z0, L(s)).
     """
     from core.plotting.heatmap import heatmap
     from core.plotting.trajectories import plot_trajectories
-    from core.validate.simulate import MonteCarloSim_scLTL
+    from core.validate.simulate import ScltlMonteCarloSim
 
     failures = []
     labels = np.asarray(labels, dtype=np.int64)
@@ -582,7 +520,7 @@ def report_scLTL(args, stamp, model, partition, V_lower, policy, dfa, labels,
     physical_s = np.arange(partition.size)
     V_initial = np.asarray(V_lower)[physical_s, initial_z]
     inputs_initial = np.asarray(policy_inputs)[physical_s, initial_z]
-    sim = _guard('sc-LTL Monte Carlo simulation', failures, MonteCarloSim_scLTL,
+    sim = _guard('sc-LTL Monte Carlo simulation', failures, ScltlMonteCarloSim,
                  model, partition, policy, policy_inputs, model.x0, dfa, labels,
                  iterations=iterations, sim_horizon=sim_horizon, verbose=False)
     if sim is not None:
@@ -614,7 +552,7 @@ def _is_horizon(horizon):
             and horizon >= 0)
 
 
-def set_horizon(args, model):
+def set_horizon(args: Namespace, model: Benchmark) -> int | None:
     """Take the horizon exclusively from the benchmark: model.horizon, or None (unbounded) if unset.
 
     G(safe) requires a horizon and reach-avoid may have one; scLTL is only solved unbounded.
@@ -633,7 +571,7 @@ def set_horizon(args, model):
     return horizon
 
 
-def set_safety_horizon(args, model):
+def set_safety_horizon(args: Namespace, model: Benchmark) -> int:
     """Take the finite safety horizon exclusively from the benchmark."""
     horizon = getattr(model, 'horizon', None)
     if not _is_horizon(horizon):
@@ -644,9 +582,17 @@ def set_safety_horizon(args, model):
     return args.horizon
 
 
-def report_safety(args, stamp, model, partition, V_lower, V_upper, policy,
-                  *, iterations=1000, num_traces=10):
-    """Save safety value heatmaps, MC trajectories and MC outcome plots."""
+def report_safety(
+    args: Namespace, stamp: str, model: SafetyBenchmark, partition: DensePartition,
+    V_lower: FloatArray, V_upper: FloatArray, policy: IntArray,
+    *, iterations: int = 1000, num_traces: int = 10,
+) -> float:
+    """Return the empirical fraction safe initially and after all H transitions.
+
+    Values/policy are (H+1, S+1), indexed by remaining steps. Update args.horizon
+    and summary; save arrays and figures in args.output_dir. Invalid safety
+    settings raise ValueError; guarded summary and heatmap failures are logged.
+    """
     import matplotlib.pyplot as plt
     from core.plotting.heatmap import heatmap
     from core.plotting.utils import PNG_DPI

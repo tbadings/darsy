@@ -15,8 +15,8 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
         self.partition = {}
 
         # Discrete control grid: bounds and samples per input dimension.
-        self.uMin = [-5]
-        self.uMax = [5]
+        self.u_min = [-5]
+        self.u_max = [5]
         self.num_actions = [21]
 
         # State-space bounds used for abstraction.
@@ -90,8 +90,8 @@ class DoubleIntegrator_scLTL(DoubleIntegratorDynamics):
         # --------------------------------------------------
         # Control inputs
         # --------------------------------------------------
-        self.uMin = [-5]
-        self.uMax = [5]
+        self.u_min = [-5]
+        self.u_max = [5]
         self.num_actions = [21]
 
         # --------------------------------------------------

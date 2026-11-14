@@ -1,19 +1,26 @@
 import logging
 import time
+from argparse import Namespace
+from collections.abc import Callable
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 from tqdm import tqdm
 
-from core.abstraction.partition import coords_to_grid
+from core.abstraction.partition import DensePartition, coords_to_grid
+from core.interfaces import Array, Dynamics
 from core.utils import create_batches, wrap_diff
 
 logger = logging.getLogger(__name__)
 
 
-def sample_next_states(step_fn, noise_sample_fn, num_samples, state_min, state_max, action, rng,
-                       fix_center=True):
+def sample_next_states(
+    step_fn: Callable[[jax.Array, jax.Array, jax.Array], Array],
+    noise_sample_fn: Callable[..., jax.Array], num_samples: int,
+    state_min: jax.Array, state_max: jax.Array, action: jax.Array, rng: jax.Array,
+    fix_center: bool = True,
+) -> tuple[jax.Array, jax.Array]:
     """Sample states uniformly or from center (if fix_center is true) and propagate under noisy dynamics."""
     if fix_center:
         rng_noise = rng
@@ -100,7 +107,9 @@ def _max_blocks_per_dim(frs_idx_lb, max_slice, factor, number_per_dim, wrap):
 class RectangularForward:
     """FRS slice (start index + width) for every (cell, action)"""
 
-    def __init__(self, args, partition, model, coarse_factor):
+    def __init__(
+        self, args: Namespace, partition: DensePartition, model: Dynamics, coarse_factor: int,
+    ) -> None:
         logger.info('=== Start forward reachability computations ===')
         t_start = time.time()
         self.coarse_factor = int(coarse_factor)

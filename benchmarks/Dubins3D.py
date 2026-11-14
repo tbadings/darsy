@@ -15,8 +15,8 @@ class Dubins3D(DubinsDynamics3D):
         self.partition = {}
 
         # Steering rates {-pi/2, 0, pi/2} and velocities {-1, 0, 1}.
-        self.uMin = [-0.50 * np.pi, -1]
-        self.uMax = [0.50 * np.pi, 1]
+        self.u_min = [-0.50 * np.pi, -1]
+        self.u_max = [0.50 * np.pi, 1]
         self.num_actions = [3, 3]
 
         # State-space bounds used for abstraction.
@@ -86,8 +86,8 @@ class Dubins3D_scLTL(DubinsDynamics3D):
         self.partition = {}
 
         # Steering rates {-pi/2, 0, pi/2} and velocities {-1, 0, 1}.
-        self.uMin = [-0.50 * np.pi, -1]
-        self.uMax = [0.50 * np.pi, 1]
+        self.u_min = [-0.50 * np.pi, -1]
+        self.u_max = [0.50 * np.pi, 1]
         self.num_actions = [3, 3]
 
         # State-space bounds used for abstraction.

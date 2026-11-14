@@ -1,26 +1,29 @@
 import numpy as np
 
+from core.abstraction.partition import CoarsePartition
+from core.interfaces import BoolArray, FloatArray, IntArray
+
+
 class IMDP:
-    """
-    Class to construct the IMDP abstraction.
-    """
+    """Fine/coarse transition bounds and labels for physical states plus a sink."""
 
-    def __init__(self, states, goal_regions, critical_regions, P_full, S_id, A_id, P_absorbing,
-                 coarse_partition, Q_id, P_coarse):
-        '''
-        Generate the IMDP abstraction
+    states_of_interest: dict[str, BoolArray]
+    partial_region_cells: dict[str, BoolArray]
+    region_labels: dict[str, set[str]]
+    atomic_propositions: list[str]
 
-        :param states:
-        :param goal_regions:
-        :param critical_regions:
-        :param P_full:
-        :param S_id:
-        :param A_id:
-        :param P_absorbing:
-        :param coarse_partition: CoarsePartition grouping fine cells into blocks.
-        :param Q_id: Per state and action, successor IDs of the block window ([A, Mc]).
-        :param P_coarse: Per state and action, block probability intervals ([A, Mc, 2]).
-        '''
+    def __init__(
+        self, states: IntArray, goal_regions: BoolArray, critical_regions: BoolArray,
+        P_full: dict[int, FloatArray], S_id: dict[int, IntArray], A_id: dict[int, IntArray],
+        P_absorbing: dict[int, FloatArray], coarse_partition: CoarsePartition,
+        Q_id: dict[int, IntArray], P_coarse: dict[int, FloatArray],
+    ) -> None:
+        """Store arrays by reference; states and boolean masks have shape (S,).
+
+        State IDs are 0..S-1; sink ID S gives nr_states = S+1. Transition
+        dictionaries follow ProbabilityIntervals in the same field order.
+        coarse_partition.parents maps each physical state to its coarse block.
+        """
         self.states = states
         self.goal_regions = goal_regions
         self.critical_regions = critical_regions

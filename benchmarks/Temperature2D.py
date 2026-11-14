@@ -15,8 +15,8 @@ class Temperature2D(Temperature2DDynamics):
         self.partition = {}
 
         # Three independent on/off heaters: 2**2 = 4 possible actions.
-        self.uMin = np.zeros(2)
-        self.uMax = np.ones(2)
+        self.u_min = np.zeros(2)
+        self.u_max = np.ones(2)
         self.num_actions = np.full(2, 2, dtype=int)
 
         # State-space bounds and the safety region coincide.

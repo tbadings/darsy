@@ -4,13 +4,19 @@ Run with the same benchmark flags as RunIMDP.py.
 """
 import logging
 import time
+from argparse import Namespace
+from typing import cast
 
 import jax
 import numpy as np
 
+from core.abstraction.imdp.imdp import IMDP
+from core.abstraction.imdp.results import ScltlSynthesisResult, SynthesisResult
 from core.abstraction.imdp.robust_dp import (
-    encode_imdp_labels, initial_product_state, solve_reach_avoid, solve_safety, solve_scLTL)
-from core.automaton.dfa import scLTL_to_DFA
+    encode_imdp_labels, initial_product_state, solve_reach_avoid, solve_safety, solve_scltl)
+from core.automaton.dfa import scltl_to_dfa
+from core.abstraction.partition import DensePartition
+from core.interfaces import Benchmark, SafetyBenchmark
 from core.options import parse_arguments
 from core.pipeline import (
     configure_run,
@@ -19,7 +25,7 @@ from core.pipeline import (
     prepare_abstraction,
     record_synthesis,
     report,
-    report_scLTL,
+    report_scltl,
     is_reach_avoid,
     is_safety,
     safe_state_mask,
@@ -32,29 +38,32 @@ from RunIMDP import build_imdp
 logger = logging.getLogger(__name__)
 
 
-def build_2imdp(args, model, partition, s_init):
+def build_2imdp(args: Namespace, model: Benchmark, partition: DensePartition, s_init: int) -> IMDP:
     """Reuse the shared fine/coarse interval abstraction built by RunIMDP."""
     return build_imdp(args, model, partition, s_init, coarse_factor=args.coarse_factor, use_coarse=True)
 
 
-def solve_2imdp(args, imdp, s0):
-    """Return lower and upper values, and a global-action policy, indexed by remaining steps with a horizon."""
+def solve_2imdp(args: Namespace, imdp: IMDP, s0: int) -> SynthesisResult:
+    """Solve reach-avoid using both interval layers and the configured horizon."""
     with jax.default_device(args.rvi_device):
         return solve_reach_avoid(
             imdp, two_layer=True, initial_state=s0, horizon=args.horizon,
             float_dtype=args.floatprecision)
 
 
-def solve_2imdp_scLTL(args, imdp, s0, formula):
-    """Return (lower, upper, global-action policy, dfa, initial z)."""
-    dfa = scLTL_to_DFA(formula)
+def solve_2imdp_scltl(args: Namespace, imdp: IMDP, s0: int, formula: str) -> ScltlSynthesisResult:
+    """Translate with Spot and solve unbounded scLTL using both interval layers."""
+    dfa = scltl_to_dfa(formula)
     labels = encode_imdp_labels(imdp, dfa)
     with jax.default_device(args.rvi_device):
-        lower, upper, policy = solve_scLTL(
+        result = solve_scltl(
             imdp, dfa, labels, two_layer=True, initial_state=s0,
             float_dtype=args.floatprecision)
     _, z0 = initial_product_state(s0, dfa, labels)
-    return lower, upper, policy, dfa, z0, labels
+    return ScltlSynthesisResult(
+        lower=result.lower, upper=result.upper, policy=result.policy,
+        dfa=dfa, initial_dfa_state=z0, labels=labels,
+    )
 
 if __name__ == '__main__':
     args = parse_arguments()
@@ -103,20 +112,21 @@ if __name__ == '__main__':
     # CASE 1: REACH-AVOID SYNTHESIS
     # ==================================================
     if safety:
-        mask = safe_state_mask(partition, model.safe_set)
-        upper_mask = safe_state_mask(partition, model.safe_set, optimistic=True)
+        safety_model = cast(SafetyBenchmark, model)
+        mask = safe_state_mask(partition, safety_model.safe_set)
+        upper_mask = safe_state_mask(partition, safety_model.safe_set, optimistic=True)
         with jax.default_device(args.rvi_device):
-            V_lower, V_upper, policy = solve_safety(abstraction, mask, upper_mask, args.horizon,
-                                                    two_layer=True, float_dtype=args.floatprecision)
-        record_synthesis(args, start, V_lower[args.horizon, s0], V_upper[args.horizon, s0])
-        save_safety_results(args, s0, V_lower, V_upper, policy)
-        report_safety(args, stamp, model, partition, V_lower, V_upper, policy)
+            result = solve_safety(abstraction, mask, upper_mask, args.horizon,
+                                  two_layer=True, float_dtype=args.floatprecision)
+        record_synthesis(args, start, result.lower[args.horizon, s0], result.upper[args.horizon, s0])
+        save_safety_results(args, s0, result.lower, result.upper, result.policy)
+        report_safety(args, stamp, safety_model, partition, result.lower, result.upper, result.policy)
     elif reach_avoid:
         logger.info(
             "Reach-avoid specification detected. "
             "Using standard robust value iteration."
         )
-        V_lower, V_upper, policy = solve_2imdp(
+        result = solve_2imdp(
             args,
             abstraction,
             s0
@@ -124,19 +134,19 @@ if __name__ == '__main__':
 
         # With a horizon, report the values with all steps remaining
         at = s0 if args.horizon is None else (args.horizon, s0)
-        record_synthesis(args, start, V_lower[at], V_upper[at])
+        record_synthesis(args, start, result.lower[at], result.upper[at])
         logger.info(
             "Initial state s0=%d: lower=%.6f, upper=%.6f",
             s0,
-            V_lower[at],
-            V_upper[at]
+            result.lower[at],
+            result.upper[at]
         )
 
         # Convert action indices to continuous inputs
         policy_inputs = extract_policy_inputs(
             args,
             partition,
-            policy,
+            result.policy,
             abstraction.nr_states,
             time_indexed=args.horizon is not None
         )
@@ -144,9 +154,9 @@ if __name__ == '__main__':
         # Save synthesis results
         np.savez_compressed(
             args.output_dir / "reach_avoid_synthesis.npz",
-            V_lower=V_lower,
-            V_upper=V_upper,
-            policy=policy,
+            V_lower=result.lower,
+            V_upper=result.upper,
+            policy=result.policy,
             initial_state=s0
         )
 
@@ -156,8 +166,8 @@ if __name__ == '__main__':
             stamp,
             model,
             partition,
-            V_lower,
-            policy,
+            result.lower,
+            result.policy,
             policy_inputs
         )
 
@@ -171,36 +181,37 @@ if __name__ == '__main__':
         )
 
         # Construct DFA and synthesize product policy
-        V_lower, V_upper, policy, dfa, z0, labels = (
-            solve_2imdp_scLTL(
+        product = (
+            solve_2imdp_scltl(
                 args,
                 abstraction,
                 s0,
                 formula
             )
         )
-        record_synthesis(args, start, V_lower[s0, z0], V_upper[s0, z0])
+        z0 = product.initial_dfa_state
+        record_synthesis(args, start, product.lower[s0, z0], product.upper[s0, z0])
         logger.info(
             "Initial product state (s,z)=(%d,%d): "
             "lower=%.6f, upper=%.6f",
             s0,
             z0,
-            V_lower[s0, z0],
-            V_upper[s0, z0]
+            product.lower[s0, z0],
+            product.upper[s0, z0]
         )
 
         # Save synthesis results
         np.savez_compressed(
             args.output_dir / "product_synthesis.npz",
-            V_lower=V_lower,
-            V_upper=V_upper,
-            policy=policy,
+            V_lower=product.lower,
+            V_upper=product.upper,
+            policy=product.policy,
             initial_state=s0,
             initial_dfa_state=z0,
-            dfa_transitions=dfa.transitions,
-            dfa_accepting=dfa.accepting_states,
+            dfa_transitions=product.dfa.transitions,
+            dfa_accepting=product.dfa.accepting_states,
             atomic_propositions=np.asarray(
-                dfa.atomic_propositions
+                product.dfa.atomic_propositions
             )
         )
 
@@ -208,20 +219,20 @@ if __name__ == '__main__':
         policy_inputs = extract_policy_inputs(
             args,
             partition,
-            policy,
+            product.policy,
             abstraction.nr_states
         )
 
         # Monte Carlo simulation and plotting
-        report_scLTL(
+        report_scltl(
             args=args,
             stamp=stamp,
             model=model,
             partition=partition,
-            V_lower=V_lower,
-            policy=policy,
-            dfa=dfa,
-            labels=labels,
+            V_lower=product.lower,
+            policy=product.policy,
+            dfa=product.dfa,
+            labels=product.labels,
             policy_inputs=policy_inputs
         )
 

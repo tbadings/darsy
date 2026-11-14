@@ -3,12 +3,12 @@ import jax.numpy as jnp
 
 
 def hyperrectangles_isdisjoint(lb1, ub1, lb2, ub2):
-    '''
+    r"""
     Check if two hyperrectangles are disjoint.
 
     Algorithm:
     ``H1 \cap H2 are not disjoint iff |c_2 - c_1| \leq r_1 + r_2, where \leq is taken component-wise.``
-    '''
+    """
     # Compute both centers
     center1 = (ub1 + lb1) / 2
     center2 = (ub2 + lb2) / 2
@@ -49,12 +49,12 @@ def hyperrectangles_iscontained_multi(lb1, ub1, lbs2, ubs2):
 
 
 def hyperrectangles_isdisjoint_multi(lb1, ub1, lbs2, ubs2):
-    '''
+    r"""
     Check if one hyperrectangle (lb1, ub1) is disjoint from multiple other hyperrectangles given by (lbs2, ubs2)
 
     Algorithm:
     ``H1 \cap H2 are not disjoint iff |c_2 - c_1| \leq r_1 + r_2, where \leq is taken component-wise.``
-    '''
+    """
     empty_intersections = vmap_hyperrectangles_isdisjoint(lb1, ub1, lbs2, ubs2)
     empty_intersection = jnp.all(empty_intersections)
 

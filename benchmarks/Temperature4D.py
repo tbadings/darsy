@@ -15,8 +15,8 @@ class Temperature4D(Temperature4DDynamics):
         self.partition = {}
 
         # Four independent on/off heaters: 2**4 = 16 possible actions.
-        self.uMin = np.zeros(4)
-        self.uMax = np.ones(4)
+        self.u_min = np.zeros(4)
+        self.u_max = np.ones(4)
         self.num_actions = np.full(4, 2, dtype=int)
 
         # State-space bounds and the safety region coincide.

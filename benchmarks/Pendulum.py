@@ -18,8 +18,8 @@ class Pendulum(PendulumDynamics):
         self.partition = {}
 
         # Discrete control grid: bounds and samples per input dimension.
-        self.uMin = [-2]
-        self.uMax = [2]
+        self.u_min = [-2]
+        self.u_max = [2]
         self.num_actions = [3]
 
         # State-space bounds used for abstraction.
@@ -124,5 +124,5 @@ class PendulumHard(Pendulum):
 
     def set_spec(self):
         super().set_spec()
-        self.uMin = [-1.2]
-        self.uMax = [1.2]
+        self.u_min = [-1.2]
+        self.u_max = [1.2]
